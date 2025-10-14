@@ -164,7 +164,7 @@ odyssee-saas/
 - Middleware d'identification par sous-domaine
 - Décorateurs de sécurité
 
-### ✅ Phase 3 : Interface Super-Admin (EN COURS - 80% FAIT)
+### ✅ Phase 3 : Interface Super-Admin (TERMINÉE ✅)
 
 #### ✅ Complété :
 1. **Dashboard super-admin** (/super-admin)
@@ -182,21 +182,25 @@ odyssee-saas/
    - Toggle actif/inactif
    - Chiffrement automatique des clés API
 
-#### 🚧 À faire (Phase 3) :
-3. **Gestion des utilisateurs par agence**
-   - Créer des agency_admin pour une agence
-   - Créer des sellers pour une agence
-   - Modifier/désactiver des utilisateurs
-   - Réinitialiser mot de passe
+3. **Gestion des utilisateurs par agence** ✅
+   - ✅ Page : `/super-admin/agencies/<id>/users`
+   - ✅ API GET/POST : Liste et création d'utilisateurs
+   - ✅ API PUT/DELETE : Modification et suppression
+   - ✅ Créer des agency_admin pour une agence
+   - ✅ Créer des sellers pour une agence
+   - ✅ Modifier/désactiver des utilisateurs
+   - ✅ Réinitialiser mot de passe
+   - ✅ Protection super-admin (impossible à modifier/supprimer)
+   - ✅ Suppression intelligente (désactive si voyages, sinon supprime)
+   - ✅ Interface avec tableau et statistiques temps réel
+   - ✅ Quotas configurables (limite quotidienne + marge)
 
-4. **Vue détaillée d'une agence**
+#### 🔮 Non implémenté (optionnel pour plus tard) :
+4. **Vue détaillée d'une agence** (fonctionnalité bonus)
    - Page dédiée avec onglets
-   - Liste des utilisateurs
-   - Liste des voyages
-   - Statistiques détaillées
+   - Liste des voyages de l'agence
+   - Statistiques détaillées avancées
    - Logs d'activité
-
-5. **Configuration avancée**
    - Test de validité des clés API
    - Gestion des quotas en temps réel
    - Historique des modifications
@@ -239,6 +243,11 @@ odyssee-saas/
 - `GET /api/super-admin/agencies/<id>` : Détails agence
 - `PUT /api/super-admin/agencies/<id>` : Modifier agence
 - `DELETE /api/super-admin/agencies/<id>` : Supprimer agence
+- `GET /api/super-admin/agencies/<id>/users` : Liste utilisateurs d'une agence
+- `POST /api/super-admin/agencies/<id>/users` : Créer utilisateur
+- `GET /api/super-admin/users/<id>` : Détails utilisateur
+- `PUT /api/super-admin/users/<id>` : Modifier utilisateur
+- `DELETE /api/super-admin/users/<id>` : Supprimer utilisateur
 
 ## 🔧 CONFIGURATION (.env)
 
@@ -293,29 +302,55 @@ flask db upgrade                         # Appliquer les migrations
 - Création d'agence via interface
 - Modification d'agence (avec préservation des données)
 - Suppression d'agence (avec protection)
-- Toggle actif/inactif
+- Toggle actif/inactif pour agences
 - Chiffrement/déchiffrement des clés API
+- **Gestion complète des utilisateurs**
+- **Création d'admins d'agence et de vendeurs**
+- **Modification des quotas et permissions**
+- **Suppression intelligente des utilisateurs**
 - Interface responsive avec Tailwind
 
 ### 🧪 Données de test actuelles :
 - 1 super-admin créé
-- 1 agence de test créée
+- 1+ agence(s) de test créée(s)
+- Utilisateurs test créés pour les agences
 - Base de données SQLite locale
 
 ### 🐛 Bugs connus :
-- Aucun bug majeur détecté pour le moment
+- ~~Erreur Jinja dans agency_users.html~~ ✅ CORRIGÉ (utilisation de data-attributes)
 
 ## 📝 PROCHAINES ÉTAPES
 
-### Immédiatement (Suite Phase 3) :
-1. **Créer la gestion des utilisateurs**
-   - Route : `/super-admin/agencies/<id>/users`
-   - API : CRUD pour User
-   - Interface : Liste + Modal création/édition
+### Immédiatement (Phase 4 - Interface Agence) :
+**Objectif** : Créer l'interface pour les agency_admin et sellers
 
-2. **Créer la vue détaillée d'une agence**
-   - Route : `/super-admin/agencies/<id>`
-   - Onglets : Infos, Utilisateurs, Voyages, Stats
+1. **Dashboard Agence** (`/agency/dashboard`)
+   - Vue d'ensemble de l'agence
+   - Statistiques de l'agence
+   - Activité récente des vendeurs
+   - Quota d'utilisation
+
+2. **Génération de Voyages** (`/agency/generate`)
+   - Formulaire de génération (réutiliser le système existant)
+   - Intégration avec Google API (Places, Gemini)
+   - Appels API structurés
+   - Sauvegarde en base de données
+
+3. **Liste des Voyages** (`/agency/trips`)
+   - Vue avec filtres (status, date, vendeur)
+   - Actions : Publier, Assigner à client, Marquer comme vendu
+   - Export PDF
+
+4. **Gestion des Clients** (`/agency/clients`)
+   - CRUD clients
+   - Associer clients aux voyages
+   - Historique des achats
+
+### Plus tard (Phase 5 & 6) :
+- Templates de fiches (classic/modern/luxury)
+- Publication automatique SFTP/FTP
+- Paiements Stripe
+- Déploiement Railway
 
 ### Méthode de travail :
 - **Toujours créer des artifacts complets** (copier-coller direct)
@@ -353,7 +388,7 @@ flask db upgrade                         # Appliquer les migrations
 ## 🎓 POUR REPRENDRE UNE CONVERSATION
 
 ### Phrase de contexte à donner :
-"Je reprends le projet Odyssée SaaS. Nous sommes en Phase 3 (Interface Super-Admin). Le CRUD des agences est terminé et fonctionne. Prochaine étape : créer la gestion des utilisateurs par agence. Utilise le fichier CONTEXTE_PROJET.md pour avoir tous les détails. Méthode : toujours créer des artifacts complets pour copier-coller dans VS Code."
+"Je reprends le projet Odyssée SaaS. Nous avons terminé la Phase 3 (Interface Super-Admin complète avec CRUD agences et gestion utilisateurs). Prochaine étape : Phase 4 - Interface Agence (dashboard, génération de voyages, gestion clients). Utilise le fichier CONTEXTE_PROJET.md pour avoir tous les détails. Méthode : toujours créer des artifacts complets pour copier-coller dans VS Code."
 
 ### Documents à fournir :
 - Ce fichier (CONTEXTE_PROJET.md)
@@ -364,5 +399,6 @@ flask db upgrade                         # Appliquer les migrations
 ---
 
 **Dernière mise à jour** : 14 octobre 2025
-**État** : Phase 3 en cours (CRUD Agences ✅, Gestion Utilisateurs 🚧)
+**État** : Phase 3 terminée ✅ - Début Phase 4 (Interface Agence)
 **Environnement** : MacOS + VS Code + Python 3.x + Flask
+**Prochaine étape** : Dashboard Agence + Génération de voyages
