@@ -702,18 +702,27 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- 🔒 SÉCURITÉ : Google Places API chargée via routes proxy côté serveur -->
-<!-- Plus besoin de charger l'API directement avec la clé -->
 
-<!-- Wizard JavaScript -->
-<script src="{{ url_for('static', filename='js/wizard.js') }}"></script>
+<!-- Dans le body ou un div principal -->
+<div id="wizard-config" 
+     data-user-margin="{{ user_margin | default(80) }}"
+     data-agency-name="{{ g.agency.name if g and g.agency else 'Agence' }}"
+     data-primary-color="{{ g.agency.primary_color if g and g.agency else '#3B82F6' }}">
+</div>
 
 <script>
-// Configuration globale (sans clé API exposée)
-window.WIZARD_CONFIG = {
-    userMargin: {{ user_margin }},
-    agencyName: "{% if g.agency %}{{ g.agency.name }}{% else %}Agence{% endif %}",
-    primaryColor: "{% if g.agency %}{{ g.agency.primary_color }}{% else %}#3B82F6{% endif %}"
-};
+// Récupérer la configuration depuis les attributs data
+(function() {
+    var configEl = document.getElementById('wizard-config');
+    if (configEl) {
+        window.WIZARD_CONFIG = {
+            userMargin: parseInt(configEl.dataset.userMargin, 10) || 80,
+            agencyName: configEl.dataset.agencyName || 'Agence',
+            primaryColor: configEl.dataset.primaryColor || '#3B82F6'
+        };
+        console.log('✅ Configuration Wizard chargée:', window.WIZARD_CONFIG);
+    }
+})();
 </script>
+
 {% endblock %}
