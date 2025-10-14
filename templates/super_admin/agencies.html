@@ -56,6 +56,12 @@
                             <span class="px-4 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg text-sm text-gray-600">.odyssee.com</span>
                         </div>
                     </div>
+
+                    <!-- Logo URL -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">URL du Logo</label>
+                        <input type="url" id="logo_url" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="https://example.com/logo.png">
+                    </div>
                 </div>
             </div>
 
@@ -113,12 +119,21 @@
                         <input type="number" id="monthly_generation_limit" value="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     </div>
                 </div>
+
+                <!-- Active/Inactive Toggle (only for edit) -->
+                <div id="status-toggle-container" class="mt-4 hidden">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="is_active" class="sr-only peer">
+                        <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                        <span class="ml-3 text-sm font-medium text-gray-700">Agence Active</span>
+                    </label>
+                </div>
             </div>
 
             <!-- API Keys (Optionnel) -->
             <div class="border-t pt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-2">Clés API <span class="text-sm font-normal text-gray-500">(Optionnel)</span></h3>
-                <p class="text-sm text-gray-600 mb-4">Ces clés seront chiffrées dans la base de données</p>
+                <p class="text-sm text-gray-600 mb-4">Ces clés seront chiffrées dans la base de données. Laissez vide pour ne pas modifier.</p>
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Google API Key</label>
@@ -139,10 +154,33 @@
                 </button>
                 <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
                     <i class="fas fa-save mr-2"></i>
-                    Enregistrer
+                    <span id="submit-btn-text">Enregistrer</span>
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Modal Confirmation Suppression -->
+<div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div class="text-center">
+            <div class="h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-exclamation-triangle text-red-600 text-3xl"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-2">Supprimer l'agence ?</h3>
+            <p class="text-gray-600 mb-6" id="delete-message">
+                Êtes-vous sûr de vouloir supprimer cette agence ? Cette action est irréversible.
+            </p>
+            <div class="flex space-x-4">
+                <button onclick="closeDeleteModal()" class="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold">
+                    Annuler
+                </button>
+                <button onclick="confirmDelete()" class="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">
+                    Supprimer
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -152,6 +190,7 @@
 <script>
 // Variables globales
 let agencies = [];
+let agencyToDelete = null;
 
 // Charger les agences au chargement de la page
 document.addEventListener('DOMContentLoaded', loadAgencies);
@@ -193,7 +232,7 @@ function renderAgencies() {
     container.innerHTML = agencies.map(agency => `
         <div class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition">
             <div class="flex justify-between items-start mb-4">
-                <div>
+                <div class="flex-1">
                     <h3 class="text-xl font-bold text-gray-900">${agency.name}</h3>
                     <p class="text-sm text-gray-500">${agency.subdomain}.odyssee.com</p>
                 </div>
@@ -208,13 +247,23 @@ function renderAgencies() {
                 <p class="text-gray-600"><i class="fas fa-chart-line mr-2 w-4"></i>${agency.current_usage} / ${agency.monthly_limit} générations</p>
             </div>
             
-            <div class="flex items-center justify-between pt-4 border-t">
-                <span class="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-medium">
-                    ${agency.subscription_tier}
-                </span>
-                <button onclick="editAgency(${agency.id})" class="text-blue-600 hover:text-blue-700 font-medium text-sm">
-                    <i class="fas fa-edit mr-1"></i>Modifier
-                </button>
+            <div class="pt-4 border-t space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-medium">
+                        ${agency.subscription_tier}
+                    </span>
+                    <a href="/super-admin/agencies/${agency.id}/users" class="text-purple-600 hover:text-purple-700 font-medium text-sm px-3 py-1 rounded hover:bg-purple-50">
+                        <i class="fas fa-users mr-1"></i>Utilisateurs
+                    </a>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="editAgency(${agency.id})" class="flex-1 text-blue-600 hover:text-blue-700 font-medium text-sm px-3 py-2 rounded hover:bg-blue-50 border border-blue-200">
+                        <i class="fas fa-edit mr-1"></i>Modifier
+                    </button>
+                    <button onclick="deleteAgency(${agency.id}, '${agency.name}')" class="flex-1 text-red-600 hover:text-red-700 font-medium text-sm px-3 py-2 rounded hover:bg-red-50 border border-red-200">
+                        <i class="fas fa-trash mr-1"></i>Supprimer
+                    </button>
+                </div>
             </div>
         </div>
     `).join('');
@@ -222,8 +271,10 @@ function renderAgencies() {
 
 function openCreateModal() {
     document.getElementById('modal-title').textContent = 'Créer une Agence';
+    document.getElementById('submit-btn-text').textContent = 'Créer';
     document.getElementById('agency-form').reset();
     document.getElementById('agency-id').value = '';
+    document.getElementById('status-toggle-container').classList.add('hidden');
     document.getElementById('agency-modal').classList.remove('hidden');
 }
 
@@ -232,15 +283,25 @@ function editAgency(id) {
     if (!agency) return;
     
     document.getElementById('modal-title').textContent = 'Modifier l\'Agence';
+    document.getElementById('submit-btn-text').textContent = 'Enregistrer';
     document.getElementById('agency-id').value = agency.id;
     document.getElementById('name').value = agency.name;
     document.getElementById('subdomain').value = agency.subdomain;
+    document.getElementById('logo_url').value = agency.logo_url || '';
     document.getElementById('primary_color').value = agency.primary_color;
     document.getElementById('template_name').value = agency.template_name;
     document.getElementById('contact_email').value = agency.contact_email || '';
     document.getElementById('contact_phone').value = agency.contact_phone || '';
     document.getElementById('subscription_tier').value = agency.subscription_tier;
     document.getElementById('monthly_generation_limit').value = agency.monthly_limit;
+    
+    // Afficher et définir le toggle is_active
+    document.getElementById('status-toggle-container').classList.remove('hidden');
+    document.getElementById('is_active').checked = agency.is_active;
+    
+    // Vider les champs API (on ne les affiche jamais en clair)
+    document.getElementById('google_api_key').value = '';
+    document.getElementById('stripe_api_key').value = '';
     
     document.getElementById('agency-modal').classList.remove('hidden');
 }
@@ -249,25 +310,81 @@ function closeModal() {
     document.getElementById('agency-modal').classList.add('hidden');
 }
 
+function deleteAgency(id, name) {
+    agencyToDelete = id;
+    document.getElementById('delete-message').innerHTML = `
+        Êtes-vous sûr de vouloir supprimer l'agence <strong>${name}</strong> ?<br>
+        <span class="text-sm text-gray-500">Cette action est irréversible.</span>
+    `;
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.add('hidden');
+    agencyToDelete = null;
+}
+
+async function confirmDelete() {
+    if (!agencyToDelete) return;
+    
+    try {
+        const response = await fetch(`/api/super-admin/agencies/${agencyToDelete}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ ' + result.message);
+            closeDeleteModal();
+            loadAgencies();
+        } else {
+            alert('❌ ' + result.message);
+        }
+    } catch (error) {
+        alert('❌ Erreur réseau');
+    }
+}
+
 document.getElementById('agency-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    const agencyId = document.getElementById('agency-id').value;
+    const isEdit = !!agencyId;
     
     const data = {
         name: document.getElementById('name').value,
         subdomain: document.getElementById('subdomain').value,
+        logo_url: document.getElementById('logo_url').value,
         primary_color: document.getElementById('primary_color').value,
         template_name: document.getElementById('template_name').value,
         contact_email: document.getElementById('contact_email').value,
         contact_phone: document.getElementById('contact_phone').value,
         subscription_tier: document.getElementById('subscription_tier').value,
         monthly_generation_limit: document.getElementById('monthly_generation_limit').value,
-        google_api_key: document.getElementById('google_api_key').value,
-        stripe_api_key: document.getElementById('stripe_api_key').value
     };
     
+    // Ajouter is_active seulement en mode édition
+    if (isEdit) {
+        data.is_active = document.getElementById('is_active').checked;
+    }
+    
+    // Ajouter les clés API seulement si elles sont renseignées
+    const googleKey = document.getElementById('google_api_key').value.trim();
+    const stripeKey = document.getElementById('stripe_api_key').value.trim();
+    
+    if (googleKey) data.google_api_key = googleKey;
+    if (stripeKey) data.stripe_api_key = stripeKey;
+    
     try {
-        const response = await fetch('/api/super-admin/agencies', {
-            method: 'POST',
+        const url = isEdit 
+            ? `/api/super-admin/agencies/${agencyId}` 
+            : '/api/super-admin/agencies';
+        
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
@@ -275,7 +392,7 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
         const result = await response.json();
         
         if (result.success) {
-            alert('✅ Agence créée avec succès !');
+            alert('✅ ' + result.message);
             closeModal();
             loadAgencies();
         } else {
@@ -283,6 +400,7 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
         }
     } catch (error) {
         alert('❌ Erreur réseau');
+        console.error(error);
     }
 });
 </script>

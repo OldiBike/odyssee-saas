@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}Utilisateurs - {{ agency.name }} - Odyssée{% endblock %}
+
+{% block content %}
+<div data-agency-id="{{ agency.id }}">
+    <!-- Breadcrumb -->
+    <nav class="mb-6">
+        <ol class="flex items-center space-x-2 text-sm text-gray-600">
+            <li><a href="{{ url_for('agencies_list') }}" class="hover:text-blue-600">Agences</a></li>
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li class="text-gray-900 font-medium">{{ agency.name }}</li>
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li class="text-gray-900 font-medium">Utilisateurs</li>
+        </ol>
+    </nav>
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">
+                <i class="fas fa-users text-blue-600 mr-2"></i>
+                Utilisateurs de {{ agency.name }}
+            </h1>
+            <p class="text-gray-600">Gérez les administrateurs et vendeurs de cette agence</p>
+        </div>
+        <button onclick="openCreateModal()" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center">
+            <i class="fas fa-user-plus mr-2"></i>
+            Ajouter un Utilisateur
+        </button>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm opacity-90 mb-1">Total Utilisateurs</p>
+                    <p class="text-3xl font-bold" id="total-users">0</p>
+                </div>
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-users text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm opacity-90 mb-1">Administrateurs</p>
+                    <p class="text-3xl font-bold" id="admin-count">0</p>
+                </div>
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-user-shield text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm opacity-90 mb-1">Vendeurs</p>
+                    <p class="text-3xl font-bold" id="seller-count">0</p>
+                </div>
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-briefcase text-2xl"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users List -->
+    <div id="users-container" class="bg-white rounded-xl shadow-md">
+        <!-- Loading state -->
+        <div class="text-center py-12">
+            <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+            <p class="text-gray-600 mt-4">Chargement des utilisateurs...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Create/Edit User -->
+<div id="user-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+            <h2 id="modal-title" class="text-2xl font-bold text-gray-900">Ajouter un Utilisateur</h2>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+        
+        <form id="user-form" class="p-6 space-y-6">
+            <input type="hidden" id="user-id">
+            
+            <!-- Informations de Base -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Informations Personnelles</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Pseudo (Nom Affiché) *</label>
+                        <input type="text" id="pseudo" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Ex: Jean Dupont">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                        <input type="email" id="email" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="jean@example.com">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Téléphone</label>
+                        <input type="tel" id="phone" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="+32 123 45 67 89">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Rôle *</label>
+                        <select id="role" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="seller">Vendeur</option>
+                            <option value="agency_admin">Administrateur d'Agence</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Authentification -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Authentification</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Nom d'utilisateur *</label>
+                        <input type="text" id="username" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="jean.dupont">
+                        <p class="text-xs text-gray-500 mt-1">Uniquement lettres, chiffres, point et tiret</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Mot de passe <span id="password-required">*</span>
+                        </label>
+                        <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="••••••••">
+                        <p class="text-xs text-gray-500 mt-1" id="password-hint">Minimum 8 caractères</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quotas et Limites (pour les vendeurs) -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quotas de Génération</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Limite Quotidienne</label>
+                        <input type="number" id="daily_generation_limit" value="5" min="1" max="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">Nombre de voyages générables par jour</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Marge (%)</label>
+                        <input type="number" id="margin_percentage" value="80" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">Pourcentage de marge du vendeur</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statut (only for edit) -->
+            <div id="status-toggle-container" class="border-t pt-6 hidden">
+                <label class="flex items-center cursor-pointer">
+                    <input type="checkbox" id="is_active" class="sr-only peer">
+                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                    <span class="ml-3 text-sm font-medium text-gray-700">Utilisateur Actif</span>
+                </label>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="flex justify-end space-x-4 pt-4 border-t">
+                <button type="button" onclick="closeModal()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                    Annuler
+                </button>
+                <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
+                    <i class="fas fa-save mr-2"></i>
+                    <span id="submit-btn-text">Créer</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Confirmation Suppression -->
+<div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div class="text-center">
+            <div class="h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-exclamation-triangle text-red-600 text-3xl"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-2">Supprimer l'utilisateur ?</h3>
+            <p class="text-gray-600 mb-6" id="delete-message">
+                Êtes-vous sûr de vouloir supprimer cet utilisateur ?
+            </p>
+            <div class="flex space-x-4">
+                <button onclick="closeDeleteModal()" class="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold">
+                    Annuler
+                </button>
+                <button onclick="confirmDelete()" class="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">
+                    Supprimer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Variables globales
+const AGENCY_ID = parseInt(document.querySelector('[data-agency-id]').dataset.agencyId);
+let users = [];
+let userToDelete = null;
+
+// Charger les utilisateurs au chargement de la page
+document.addEventListener('DOMContentLoaded', loadUsers);
+
+async function loadUsers() {
+    try {
+        const response = await fetch(`/api/super-admin/agencies/${AGENCY_ID}/users`);
+        users = await response.json();
+        renderUsers();
+        updateStats();
+    } catch (error) {
+        console.error('Erreur:', error);
+        document.getElementById('users-container').innerHTML = `
+            <div class="text-center py-12 text-red-600">
+                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                <p>Erreur lors du chargement des utilisateurs</p>
+            </div>
+        `;
+    }
+}
+
+function updateStats() {
+    const total = users.length;
+    const admins = users.filter(u => u.role === 'agency_admin').length;
+    const sellers = users.filter(u => u.role === 'seller').length;
+    
+    document.getElementById('total-users').textContent = total;
+    document.getElementById('admin-count').textContent = admins;
+    document.getElementById('seller-count').textContent = sellers;
+}
+
+function renderUsers() {
+    const container = document.getElementById('users-container');
+    
+    if (users.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <div class="h-20 w-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-users text-gray-400 text-3xl"></i>
+                </div>
+                <p class="text-gray-600 mb-4">Aucun utilisateur pour cette agence</p>
+                <button onclick="openCreateModal()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+                    Ajouter le Premier Utilisateur
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    // Créer le tableau
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilisateur</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quotas</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    ${users.map(user => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                                        ${user.pseudo[0]}
+                                    </div>
+                                    <div class="ml-4">
+                                        <div class="text-sm font-medium text-gray-900">${user.pseudo}</div>
+                                        <div class="text-sm text-gray-500">@${user.username}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'agency_admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
+                                    ${user.role === 'agency_admin' ? '<i class="fas fa-user-shield mr-1"></i>Admin' : '<i class="fas fa-briefcase mr-1"></i>Vendeur'}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <div>${user.email}</div>
+                                <div class="text-xs">${user.phone || 'N/A'}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <div>${user.generation_usage}</div>
+                                <div class="text-xs">Marge: ${user.margin_percentage}%</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                    ${user.is_active ? 'Actif' : 'Inactif'}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button onclick="editUser(${user.id})" class="text-blue-600 hover:text-blue-900 mr-3">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteUser(${user.id}, '${user.pseudo}')" class="text-red-600 hover:text-red-900">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function openCreateModal() {
+    document.getElementById('modal-title').textContent = 'Ajouter un Utilisateur';
+    document.getElementById('submit-btn-text').textContent = 'Créer';
+    document.getElementById('user-form').reset();
+    document.getElementById('user-id').value = '';
+    document.getElementById('status-toggle-container').classList.add('hidden');
+    document.getElementById('password').required = true;
+    document.getElementById('password-required').textContent = '*';
+    document.getElementById('password-hint').textContent = 'Minimum 8 caractères';
+    document.getElementById('user-modal').classList.remove('hidden');
+}
+
+function editUser(id) {
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    
+    document.getElementById('modal-title').textContent = 'Modifier l\'Utilisateur';
+    document.getElementById('submit-btn-text').textContent = 'Enregistrer';
+    document.getElementById('user-id').value = user.id;
+    document.getElementById('pseudo').value = user.pseudo;
+    document.getElementById('email').value = user.email;
+    document.getElementById('phone').value = user.phone || '';
+    document.getElementById('username').value = user.username;
+    document.getElementById('role').value = user.role;
+    document.getElementById('margin_percentage').value = user.margin_percentage;
+    document.getElementById('daily_generation_limit').value = user.generation_usage.split(' / ')[1];
+    
+    // Mot de passe optionnel en édition
+    document.getElementById('password').required = false;
+    document.getElementById('password').value = '';
+    document.getElementById('password-required').textContent = '';
+    document.getElementById('password-hint').textContent = 'Laissez vide pour ne pas modifier';
+    
+    // Afficher et définir le toggle is_active
+    document.getElementById('status-toggle-container').classList.remove('hidden');
+    document.getElementById('is_active').checked = user.is_active;
+    
+    document.getElementById('user-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('user-modal').classList.add('hidden');
+}
+
+function deleteUser(id, pseudo) {
+    userToDelete = id;
+    document.getElementById('delete-message').innerHTML = `
+        Êtes-vous sûr de vouloir supprimer <strong>${pseudo}</strong> ?<br>
+        <span class="text-sm text-gray-500">Si l'utilisateur a des voyages, il sera désactivé au lieu d'être supprimé.</span>
+    `;
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.add('hidden');
+    userToDelete = null;
+}
+
+async function confirmDelete() {
+    if (!userToDelete) return;
+    
+    try {
+        const response = await fetch(`/api/super-admin/users/${userToDelete}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ ' + result.message);
+            closeDeleteModal();
+            loadUsers();
+        } else {
+            alert('❌ ' + result.message);
+        }
+    } catch (error) {
+        alert('❌ Erreur réseau');
+    }
+}
+
+document.getElementById('user-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const userId = document.getElementById('user-id').value;
+    const isEdit = !!userId;
+    
+    const data = {
+        pseudo: document.getElementById('pseudo').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        username: document.getElementById('username').value,
+        role: document.getElementById('role').value,
+        margin_percentage: document.getElementById('margin_percentage').value,
+        daily_generation_limit: document.getElementById('daily_generation_limit').value,
+    };
+    
+    // Mot de passe (requis en création, optionnel en édition)
+    const password = document.getElementById('password').value.trim();
+    if (password) {
+        if (password.length < 8) {
+            alert('❌ Le mot de passe doit contenir au moins 8 caractères');
+            return;
+        }
+        data.password = password;
+    } else if (!isEdit) {
+        alert('❌ Le mot de passe est requis pour créer un utilisateur');
+        return;
+    }
+    
+    // Ajouter is_active seulement en mode édition
+    if (isEdit) {
+        data.is_active = document.getElementById('is_active').checked;
+    }
+    
+    try {
+        const url = isEdit 
+            ? `/api/super-admin/users/${userId}` 
+            : `/api/super-admin/agencies/${AGENCY_ID}/users`;
+        
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ ' + result.message);
+            closeModal();
+            loadUsers();
+        } else {
+            alert('❌ Erreur: ' + result.message);
+        }
+    } catch (error) {
+        alert('❌ Erreur réseau');
+        console.error(error);
+    }
+});
+</script>
+{% endblock %}

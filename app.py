@@ -248,10 +248,17 @@ def create_app():
         """Liste des agences."""
         return render_template('super_admin/agencies.html')
     
+    @app.route('/super-admin/agencies/<int:agency_id>/users')
+    @super_admin_required
+    def agency_users(agency_id):
+        """Page de gestion des utilisateurs d'une agence."""
+        agency = Agency.query.get_or_404(agency_id)
+        return render_template('super_admin/agency_users.html', agency=agency)
+    
     @app.route('/api/super-admin/agencies', methods=['GET', 'POST'])
     @super_admin_required
     def api_agencies():
-        """API CRUD pour les agences."""
+        """API CRUD pour les agences - GET et POST."""
         if request.method == 'GET':
             agencies = Agency.query.all()
             return jsonify([agency.to_dict() for agency in agencies])
@@ -298,6 +305,236 @@ def create_app():
                     'message': 'Agence créée avec succès',
                     'agency': new_agency.to_dict()
                 })
+                
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 500
+    
+    @app.route('/api/super-admin/agencies/<int:agency_id>', methods=['GET', 'PUT', 'DELETE'])
+    @super_admin_required
+    def api_agency_detail(agency_id):
+        """API CRUD pour une agence spécifique - GET, PUT, DELETE."""
+        agency = Agency.query.get_or_404(agency_id)
+        
+        if request.method == 'GET':
+            # Retourner les détails de l'agence
+            return jsonify(agency.to_dict())
+        
+        elif request.method == 'PUT':
+            # Modifier l'agence
+            data = request.get_json()
+            
+            try:
+                from utils.crypto import encrypt_api_key, encrypt_config
+                
+                # Mise à jour des champs de base
+                agency.name = data.get('name', agency.name)
+                
+                # Vérifier le sous-domaine seulement s'il a changé
+                new_subdomain = data.get('subdomain')
+                if new_subdomain and new_subdomain != agency.subdomain:
+                    existing = Agency.query.filter_by(subdomain=new_subdomain).first()
+                    if existing:
+                        return jsonify({'success': False, 'message': 'Ce sous-domaine existe déjà'}), 400
+                    agency.subdomain = new_subdomain
+                
+                agency.logo_url = data.get('logo_url', agency.logo_url)
+                agency.primary_color = data.get('primary_color', agency.primary_color)
+                agency.template_name = data.get('template_name', agency.template_name)
+                agency.contact_email = data.get('contact_email', agency.contact_email)
+                agency.contact_phone = data.get('contact_phone', agency.contact_phone)
+                agency.subscription_tier = data.get('subscription_tier', agency.subscription_tier)
+                agency.monthly_generation_limit = int(data.get('monthly_generation_limit', agency.monthly_generation_limit))
+                agency.is_active = data.get('is_active', agency.is_active)
+                
+                # Mise à jour des clés API si fournies (seulement si non vides)
+                if data.get('google_api_key'):
+                    agency.google_api_key_encrypted = encrypt_api_key(data['google_api_key'])
+                
+                if data.get('stripe_api_key'):
+                    agency.stripe_api_key_encrypted = encrypt_api_key(data['stripe_api_key'])
+                
+                if data.get('mail_config'):
+                    agency.mail_config_encrypted = encrypt_config(data['mail_config'])
+                
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Agence modifiée avec succès',
+                    'agency': agency.to_dict()
+                })
+                
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 500
+        
+        elif request.method == 'DELETE':
+            # Supprimer l'agence
+            try:
+                # Vérifier s'il y a des utilisateurs ou des voyages associés
+                users_count = User.query.filter_by(agency_id=agency_id).count()
+                trips_count = Trip.query.filter_by(agency_id=agency_id).count()
+                
+                if users_count > 0 or trips_count > 0:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Impossible de supprimer : {users_count} utilisateur(s) et {trips_count} voyage(s) associé(s). Désactivez plutôt l\'agence.'
+                    }), 400
+                
+                # Supprimer l'agence
+                db.session.delete(agency)
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Agence supprimée avec succès'
+                })
+                
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 500
+    
+    # ==============================================================================
+    # ROUTES API - GESTION DES UTILISATEURS
+    # ==============================================================================
+    
+    @app.route('/api/super-admin/agencies/<int:agency_id>/users', methods=['GET', 'POST'])
+    @super_admin_required
+    def api_agency_users(agency_id):
+        """API pour les utilisateurs d'une agence - GET et POST."""
+        agency = Agency.query.get_or_404(agency_id)
+        
+        if request.method == 'GET':
+            # Liste des utilisateurs de l'agence
+            users = User.query.filter_by(agency_id=agency_id).all()
+            return jsonify([user.to_dict() for user in users])
+        
+        elif request.method == 'POST':
+            # Créer un nouvel utilisateur
+            data = request.get_json()
+            
+            # Vérifier que le username n'existe pas déjà
+            existing = User.query.filter_by(username=data['username']).first()
+            if existing:
+                return jsonify({'success': False, 'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+            
+            # Vérifier que l'email n'existe pas déjà
+            existing_email = User.query.filter_by(email=data['email']).first()
+            if existing_email:
+                return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
+            
+            try:
+                # Hash du mot de passe
+                hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+                
+                new_user = User(
+                    agency_id=agency_id,
+                    username=data['username'],
+                    password=hashed_password,
+                    pseudo=data['pseudo'],
+                    email=data['email'],
+                    phone=data.get('phone'),
+                    role=data.get('role', 'seller'),
+                    margin_percentage=int(data.get('margin_percentage', 80)),
+                    daily_generation_limit=int(data.get('daily_generation_limit', 5)),
+                    is_active=True
+                )
+                
+                db.session.add(new_user)
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Utilisateur créé avec succès',
+                    'user': new_user.to_dict()
+                })
+                
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 500
+    
+    @app.route('/api/super-admin/users/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
+    @super_admin_required
+    def api_user_detail(user_id):
+        """API CRUD pour un utilisateur spécifique - GET, PUT, DELETE."""
+        user = User.query.get_or_404(user_id)
+        
+        # Empêcher la modification du super-admin
+        if user.role == 'super_admin':
+            return jsonify({'success': False, 'message': 'Impossible de modifier le super-admin'}), 403
+        
+        if request.method == 'GET':
+            return jsonify(user.to_dict())
+        
+        elif request.method == 'PUT':
+            # Modifier l'utilisateur
+            data = request.get_json()
+            
+            try:
+                # Vérifier le username seulement s'il a changé
+                new_username = data.get('username')
+                if new_username and new_username != user.username:
+                    existing = User.query.filter_by(username=new_username).first()
+                    if existing:
+                        return jsonify({'success': False, 'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+                    user.username = new_username
+                
+                # Vérifier l'email seulement s'il a changé
+                new_email = data.get('email')
+                if new_email and new_email != user.email:
+                    existing = User.query.filter_by(email=new_email).first()
+                    if existing:
+                        return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
+                    user.email = new_email
+                
+                # Mise à jour des champs
+                user.pseudo = data.get('pseudo', user.pseudo)
+                user.phone = data.get('phone', user.phone)
+                user.role = data.get('role', user.role)
+                user.margin_percentage = int(data.get('margin_percentage', user.margin_percentage))
+                user.daily_generation_limit = int(data.get('daily_generation_limit', user.daily_generation_limit))
+                user.is_active = data.get('is_active', user.is_active)
+                
+                # Changer le mot de passe seulement s'il est fourni
+                new_password = data.get('password')
+                if new_password and new_password.strip():
+                    user.password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+                
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Utilisateur modifié avec succès',
+                    'user': user.to_dict()
+                })
+                
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 500
+        
+        elif request.method == 'DELETE':
+            # Supprimer/Désactiver l'utilisateur
+            try:
+                # Vérifier s'il y a des voyages associés
+                trips_count = Trip.query.filter_by(user_id=user_id).count()
+                
+                if trips_count > 0:
+                    # Désactiver au lieu de supprimer
+                    user.is_active = False
+                    db.session.commit()
+                    return jsonify({
+                        'success': True,
+                        'message': f'Utilisateur désactivé ({trips_count} voyage(s) associé(s))'
+                    })
+                else:
+                    # Supprimer définitivement
+                    db.session.delete(user)
+                    db.session.commit()
+                    return jsonify({
+                        'success': True,
+                        'message': 'Utilisateur supprimé avec succès'
+                    })
                 
             except Exception as e:
                 db.session.rollback()
