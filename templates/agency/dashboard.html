@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ g.agency.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --quota-daily-progress: {{ ((stats.quota_used / stats.quota_limit * 100) if stats.quota_limit > 0 else 0) | round | int }}%;
+        --quota-monthly-progress: {{ ((stats.agency_quota_used / stats.agency_quota_limit * 100) if stats.agency_quota_limit > 0 else 0) | round | int }}%;
+    }
+    
+    .progress-bar-daily {
+        width: var(--quota-daily-progress);
+    }
+    
+    .progress-bar-monthly {
+        width: var(--quota-monthly-progress);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            <i class="fas fa-tachometer-alt text-blue-600 mr-2"></i>
+            Dashboard {{ g.agency.name }}
+        </h1>
+        <p class="text-gray-600">
+            Bienvenue {{ g.user.pseudo }} - 
+            <span class="capitalize">{{ g.user.role.replace('_', ' ') }}</span>
+        </p>
+    </div>
+
+    <!-- Statistiques Principales -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Total Voyages -->
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between mb-4">
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-plane text-2xl"></i>
+                </div>
+                <span class="text-sm font-medium bg-white bg-opacity-20 px-3 py-1 rounded-full">
+                    Total
+                </span>
+            </div>
+            <div class="text-4xl font-bold mb-1">{{ stats.total_trips }}</div>
+            <div class="text-sm opacity-90">Voyages créés</div>
+        </div>
+
+        <!-- Voyages Proposés -->
+        <div class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between mb-4">
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-clock text-2xl"></i>
+                </div>
+                <span class="text-sm font-medium bg-white bg-opacity-20 px-3 py-1 rounded-full">
+                    En attente
+                </span>
+            </div>
+            <div class="text-4xl font-bold mb-1">{{ stats.proposed_trips }}</div>
+            <div class="text-sm opacity-90">Proposés</div>
+        </div>
+
+        <!-- Voyages Assignés -->
+        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between mb-4">
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-user-check text-2xl"></i>
+                </div>
+                <span class="text-sm font-medium bg-white bg-opacity-20 px-3 py-1 rounded-full">
+                    Assignés
+                </span>
+            </div>
+            <div class="text-4xl font-bold mb-1">{{ stats.assigned_trips }}</div>
+            <div class="text-sm opacity-90">Clients assignés</div>
+        </div>
+
+        <!-- Voyages Vendus -->
+        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between mb-4">
+                <div class="h-12 w-12 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-check-circle text-2xl"></i>
+                </div>
+                <span class="text-sm font-medium bg-white bg-opacity-20 px-3 py-1 rounded-full">
+                    Vendus
+                </span>
+            </div>
+            <div class="text-4xl font-bold mb-1">{{ stats.sold_trips }}</div>
+            <div class="text-sm opacity-90">Vendus</div>
+        </div>
+    </div>
+
+    <!-- Quotas -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Quota Quotidien (Vendeur) -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <i class="fas fa-user-clock text-blue-500 mr-2"></i>
+                Votre Quota Quotidien
+            </h3>
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-600">Générations aujourd'hui</span>
+                    <span class="text-sm font-bold text-gray-900">
+                        {{ stats.quota_used }} / {{ stats.quota_limit }}
+                    </span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div class="bg-blue-500 h-full rounded-full transition-all duration-500 progress-bar-daily"></div>
+                </div>
+            </div>
+            {% if stats.quota_used >= stats.quota_limit %}
+            <div class="bg-red-50 text-red-700 px-4 py-3 rounded-lg">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                Quota quotidien atteint. Réinitialisation demain.
+            </div>
+            {% else %}
+            <div class="bg-green-50 text-green-700 px-4 py-3 rounded-lg">
+                <i class="fas fa-check-circle mr-2"></i>
+                Il vous reste {{ stats.quota_limit - stats.quota_used }} génération(s) aujourd'hui.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Quota Mensuel (Agence) -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <i class="fas fa-building text-purple-500 mr-2"></i>
+                Quota Mensuel de l'Agence
+            </h3>
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-600">Générations ce mois</span>
+                    <span class="text-sm font-bold text-gray-900">
+                        {{ stats.agency_quota_used }} / {{ stats.agency_quota_limit }}
+                    </span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div class="bg-purple-500 h-full rounded-full transition-all duration-500 progress-bar-monthly"></div>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600">
+                <i class="fas fa-info-circle mr-1"></i>
+                Formule <strong class="capitalize">{{ g.agency.subscription_tier }}</strong>
+            </p>
+        </div>
+    </div>
+
+    <!-- Actions Rapides -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- Créer un Voyage -->
+        <a href="{{ url_for('generate_trip') }}" 
+           class="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition-all transform hover:scale-105 border-2 border-transparent hover:border-blue-500">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-magic text-blue-600 text-xl"></i>
+                </div>
+                <h3 class="ml-4 text-lg font-bold text-gray-900">Créer un Voyage</h3>
+            </div>
+            <p class="text-gray-600 mb-4">
+                Utilisez l'assistant IA pour générer une nouvelle offre de voyage
+            </p>
+            <span class="inline-flex items-center text-blue-600 font-semibold">
+                Commencer <i class="fas fa-arrow-right ml-2"></i>
+            </span>
+        </a>
+
+        <!-- Mes Voyages -->
+        <a href="{{ url_for('trips_list') }}" 
+           class="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition-all transform hover:scale-105 border-2 border-transparent hover:border-purple-500">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-list text-purple-600 text-xl"></i>
+                </div>
+                <h3 class="ml-4 text-lg font-bold text-gray-900">Mes Voyages</h3>
+            </div>
+            <p class="text-gray-600 mb-4">
+                Consultez et gérez tous vos voyages créés
+            </p>
+            <span class="inline-flex items-center text-purple-600 font-semibold">
+                Voir la liste <i class="fas fa-arrow-right ml-2"></i>
+            </span>
+        </a>
+
+        <!-- Clients -->
+        {% if g.user.role == 'agency_admin' %}
+        <a href="{{ url_for('clients_list') }}" 
+           class="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition-all transform hover:scale-105 border-2 border-transparent hover:border-green-500">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-users text-green-600 text-xl"></i>
+                </div>
+                <h3 class="ml-4 text-lg font-bold text-gray-900">Clients</h3>
+            </div>
+            <p class="text-gray-600 mb-4">
+                Gérez votre base de données clients
+            </p>
+            <span class="inline-flex items-center text-green-600 font-semibold">
+                Gérer <i class="fas fa-arrow-right ml-2"></i>
+            </span>
+        </a>
+        {% else %}
+        <div class="bg-gray-50 rounded-xl shadow-md p-6 opacity-60 cursor-not-allowed">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-lock text-gray-400 text-xl"></i>
+                </div>
+                <h3 class="ml-4 text-lg font-bold text-gray-500">Clients</h3>
+            </div>
+            <p class="text-gray-500 mb-4">
+                Réservé aux administrateurs d'agence
+            </p>
+            <span class="inline-flex items-center text-gray-400">
+                Accès restreint
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Activité Récente -->
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <i class="fas fa-history text-blue-500 mr-2"></i>
+            Activité Récente
+        </h3>
+        
+        {% if stats.total_trips > 0 %}
+        <div class="space-y-3">
+            <!-- Placeholder pour l'activité récente -->
+            <div class="flex items-center p-4 bg-gray-50 rounded-lg">
+                <div class="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center mr-4">
+                    <i class="fas fa-plus text-blue-600"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="font-medium text-gray-900">Nouveau voyage créé</p>
+                    <p class="text-sm text-gray-600">Il y a quelques instants</p>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-8 text-gray-500">
+            <i class="fas fa-inbox text-4xl mb-4 text-gray-300"></i>
+            <p>Aucune activité pour le moment</p>
+            <p class="text-sm mt-2">Commencez par créer votre premier voyage !</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
