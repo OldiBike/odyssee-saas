@@ -1,12 +1,15 @@
 // ============================================================================
 // WIZARD.JS - Système de Génération de Voyage avec IA Conversationnelle
-// Version: 1.0
-// Date: 14 Octobre 2025
+// Version: 2.0 - SÉCURISÉE (Routes Proxy Google API)
+// Date: 15 Octobre 2025
 // ============================================================================
 
 /**
  * Classe principale du Wizard de génération de voyage
  * Gère le flux conversationnel étape par étape avec pré-remplissage IA
+ * 
+ * 🔒 SÉCURITÉ : Toutes les requêtes Google API passent par des routes proxy
+ * côté serveur pour ne jamais exposer les clés API au client.
  */
 class TravelWizard {
     constructor() {
@@ -28,7 +31,7 @@ class TravelWizard {
         this.attachGlobalEvents();
         
         this.isInitialized = true;
-        console.log('✅ Wizard initialisé');
+        console.log('✅ Wizard initialisé (mode sécurisé - routes proxy)');
     }
 
     /**
@@ -292,6 +295,10 @@ class TravelWizard {
 
     /**
      * Rendu de l'étape Hôtel
+     * 
+     * 🔒 NOTE : Plus d'autocomplete Google Maps direct.
+     * On pourrait ajouter un autocomplete via la route proxy /api/google/autocomplete
+     * mais pour l'instant on laisse un input simple.
      */
     renderHotelStep(step) {
         return `
@@ -1389,7 +1396,7 @@ let wizard = null;
 
 // Initialiser au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Initialisation du Wizard de Génération');
+    console.log('🚀 Initialisation du Wizard de Génération (Mode Sécurisé)');
     wizard = new TravelWizard();
     wizard.init();
 });
