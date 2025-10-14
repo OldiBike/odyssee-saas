@@ -89,7 +89,6 @@ def create_app():
                 'stripe_api_key': decrypt_api_key(agency.stripe_api_key_encrypted) if agency.stripe_api_key_encrypted else None,
                 'mail_config': decrypt_config(agency.mail_config_encrypted) if agency.mail_config_encrypted else {},
                 'ftp_config': decrypt_config(agency.ftp_config_encrypted) if agency.ftp_config_encrypted else {},
-                'youtube_api_key': app.config.get('YOUTUBE_API_KEY')  # Clé YouTube globale si disponible
             }
     
     # ==============================================================================
@@ -1072,7 +1071,7 @@ def create_app():
         Génère la prévisualisation d'un voyage avec appels API externes
         
         POST Body:
-            { form_data complètes }
+            { wizard_data complètes }
         
         Response:
             {
@@ -1088,7 +1087,6 @@ def create_app():
                 "savings": 456
             }
         """
-        from services.api_gatherer import gather_trip_data
         
         data = request.get_json()
         
@@ -1100,13 +1098,52 @@ def create_app():
             }), 429
         
         try:
-            # Appeler le service api_gatherer pour enrichir les données
-            enriched_data = gather_trip_data(data.get('form_data', {}), g.agency_config)
+            # TODO: Implémenter l'appel à services/api_gatherer.py
+            # Pour l'instant, retourner des données de test
+            
+            # Calculer les marges
+            form_data = data
+            hotel_b2b = float(form_data.get('hotel_b2b_price', 0))
+            flight = float(form_data.get('flight_price', 0))
+            transfer = float(form_data.get('transfer_cost', 0))
+            car = float(form_data.get('car_rental_cost', 0))
+            surcharge = float(form_data.get('surcharge_cost', 0))
+            pack_price = float(form_data.get('pack_price', 0))
+            hotel_b2c = float(form_data.get('hotel_b2c_price', 0))
+            
+            total_b2b = hotel_b2b + flight + transfer + car + surcharge
+            total_b2c = hotel_b2c + flight + transfer + car + surcharge
+            
+            margin = pack_price - total_b2b
+            savings = total_b2c - pack_price
             
             # Incrémenter les compteurs
             increment_generation_counters(g.user, g.agency)
             
-            return jsonify(enriched_data)
+            # Réponse (temporaire - à enrichir avec vraies APIs)
+            result = {
+                'success': True,
+                'api_data': {
+                    'photos': [
+                        {'url': 'https://via.placeholder.com/800x600?text=Photo+1'},
+                        {'url': 'https://via.placeholder.com/800x600?text=Photo+2'},
+                        {'url': 'https://via.placeholder.com/800x600?text=Photo+3'}
+                    ],
+                    'videos': [
+                        {'id': 'dQw4w9WgXcQ', 'title': 'Visite guidée'}
+                    ],
+                    'total_reviews': 1250,
+                    'average_rating': 4.5,
+                    'attractions': {
+                        'nearby': ['Attraction 1', 'Attraction 2', 'Attraction 3']
+                    }
+                },
+                'form_data': form_data,
+                'margin': int(margin),
+                'savings': int(savings)
+            }
+            
+            return jsonify(result)
             
         except Exception as e:
             print(f"❌ Erreur Generate Preview: {e}")
@@ -1127,21 +1164,58 @@ def create_app():
         Response:
             HTML complet (string)
         """
-        from services.template_engine import render_trip_template
         
         data = request.get_json()
         
         try:
-            # Déterminer le type de template
-            template_type = 'day_trip' if data.get('form_data', {}).get('is_day_trip') else 'standard'
+            # TODO: Implémenter services/template_engine.py
+            # Pour l'instant, retourner un HTML simple
             
-            # Générer le HTML avec le template engine
-            html = render_trip_template(
-                data,
-                template_type,
-                g.agency.template_name,
-                g.agency.to_dict()
-            )
+            form_data = data.get('form_data', {})
+            api_data = data.get('api_data', {})
+            
+            is_day_trip = form_data.get('is_day_trip', False)
+            
+            # HTML basique (à remplacer par vrai template)
+            html = f"""
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{form_data.get('hotel_name', 'Voyage')} - {form_data.get('destination', '')}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
+            h1 {{ color: {g.agency.primary_color}; }}
+            .photos {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+            .photos img {{ width: 100%; height: 200px; object-fit: cover; }}
+            .info {{ margin: 20px 0; }}
+            .price {{ font-size: 2em; color: {g.agency.primary_color}; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <h1>{'Excursion' if is_day_trip else 'Séjour'} à {form_data.get('destination', '')}</h1>
+        
+        {'<h2>' + form_data.get('hotel_name', '') + '</h2>' if not is_day_trip else ''}
+        
+        <div class="photos">
+            {''.join([f'<img src="{photo["url"]}" alt="Photo">' for photo in api_data.get('photos', [])[:3]])}
+        </div>
+        
+        <div class="info">
+            <p><strong>Transport:</strong> {form_data.get('transport_type', 'Non spécifié')}</p>
+            {'<p><strong>Dates:</strong> ' + form_data.get('date_start', '') + ' au ' + form_data.get('date_end', '') + '</p>' if not is_day_trip else ''}
+            {'<p><strong>Horaires:</strong> Départ ' + form_data.get('departure_time', '') + ' - Retour ' + form_data.get('return_time', '') + '</p>' if is_day_trip else ''}
+        </div>
+        
+        <div class="price">
+            {form_data.get('pack_price', 0)} € {'par personne' if not is_day_trip else ''}
+        </div>
+        
+        <p><strong>Contact:</strong> {g.agency.contact_email} - {g.agency.contact_phone}</p>
+    </body>
+    </html>
+    """
             
             return html
             
