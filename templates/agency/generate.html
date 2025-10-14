@@ -597,10 +597,6 @@
 {% block content %}
 <div id="wizard-container">
     
-    <!-- ========================================================================
-         ÉTAPE 0 : CHOIX DU MODE (IA ou Manuel)
-         ======================================================================== -->
-    
     <div id="step-0" class="wizard-step active">
         <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">
             🚀 Créer un Voyage
@@ -609,7 +605,6 @@
             Utilisez l'assistant IA pour créer rapidement ou remplissez le formulaire manuellement
         </p>
         
-        <!-- Tabs Mode -->
         <div class="tabs">
             <button class="tab active" data-mode="ai">
                 🤖 Assistant IA
@@ -619,7 +614,6 @@
             </button>
         </div>
         
-        <!-- Mode IA -->
         <div id="ai-mode" class="mode-content" style="display: block;">
             <div class="form-group">
                 <label for="ai-prompt">💬 Décrivez votre voyage en langage naturel</label>
@@ -642,7 +636,6 @@
             </button>
         </div>
         
-        <!-- Mode Manuel -->
         <div id="manual-mode" class="mode-content" style="display: none;">
             <div style="text-align: center; padding: 3rem;">
                 <p style="font-size: 1.125rem; color: #6b7280; margin-bottom: 1.5rem;">
@@ -655,24 +648,16 @@
         </div>
     </div>
     
-    <!-- ========================================================================
-         WIZARD CONVERSATIONNEL (Étapes dynamiques)
-         ======================================================================== -->
-    
     <div id="wizard-steps" style="display: none;">
         
-        <!-- Barre de progression -->
         <div class="progress-bar">
             <div class="progress-fill" style="width: 0%;"></div>
         </div>
         <div class="progress-text">Étape 1/8</div>
         
-        <!-- Container d'étape (rempli dynamiquement par wizard.js) -->
         <div id="current-step-container">
-            <!-- Le contenu de chaque étape sera injecté ici -->
-        </div>
+            </div>
         
-        <!-- Navigation -->
         <div class="wizard-nav">
             <button id="prev-btn" class="btn-secondary" disabled>
                 ← Retour
@@ -691,7 +676,6 @@
     
 </div>
 
-<!-- Loading Overlay -->
 <div id="loading-overlay" class="loading-overlay">
     <div class="loading-spinner">
         <div class="spinner"></div>
@@ -703,11 +687,12 @@
 
 {% block extra_js %}
 
-<!-- Dans le body ou un div principal -->
+<script src="{{ url_for('static', filename='js/wizard.js') }}"></script>
+
 <div id="wizard-config" 
      data-user-margin="{{ user_margin | default(80) }}"
-     data-agency-name="{{ g.agency.name if g and g.agency else 'Agence' }}"
-     data-primary-color="{{ g.agency.primary_color if g and g.agency else '#3B82F6' }}">
+     data-agency-name="{% if g and g.agency %}{{ g.agency.name }}{% else %}Agence{% endif %}"
+     data-primary-color="{% if g and g.agency %}{{ g.agency.primary_color }}{% else %}#3B82F6{% endif %}">
 </div>
 
 <script>

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Création Manuelle - {{ g.agency.name }}{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css"/>
+    <style>
+        .form-container { padding: 40px; }
+        .form-group { margin-bottom: 25px; width: 100%; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        .form-row { display: flex; gap: 20px; }
+        .save-btn { background: #3B82F6; color: white; border: none; padding: 15px 40px; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; width: 100%; }
+        h3.section-divider { text-align: center; border-bottom: 1px solid #e5e7eb; line-height: 0.1em; margin: 40px 0 30px; }
+        h3.section-divider span { background:#fff; padding:0 15px; color: #6b7280; font-size: 0.9em; text-transform: uppercase; font-weight: 600; }
+        .conditional-fields { background: #f9fafb; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1rem; border: 1px solid #e5e7eb; }
+        @media (max-width: 768px) { .form-row { flex-direction: column; gap: 0; } .form-container { padding: 20px; } }
+        .pac-container { z-index: 10000 !important; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-2xl shadow-lg overflow-hidden max-w-4xl mx-auto">
+    <div class="form-container">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">
+                    <i class="fas fa-file-alt text-blue-600 mr-2"></i>
+                    Création Manuelle de Voyage
+                </h1>
+                <p class="text-gray-600">Remplissez les champs pour créer une nouvelle proposition.</p>
+            </div>
+            <a href="{{ url_for('generate_trip') }}" class="text-sm text-blue-600 hover:underline">
+                ← Retour au mode IA
+            </a>
+        </div>
+
+        <form id="manual-trip-form">
+
+            <h3 class="section-divider"><span>Informations Générales</span></h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="destination">📍 Destination *</label>
+                    <input type="text" id="destination" class="form-control" required placeholder="Saisir une destination...">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>📅 Type de Voyage</label>
+                <div class="flex space-x-4 mt-2">
+                    <label class="flex items-center"><input type="radio" name="trip_type" value="sejour" checked class="mr-2"> Séjour avec hébergement</label>
+                    <label class="flex items-center"><input type="radio" name="trip_type" value="day_trip" class="mr-2"> Excursion d'un jour</label>
+                </div>
+            </div>
+
+            <div id="sejour-fields">
+                <h3 class="section-divider"><span>🏨 Hébergement & Dates</span></h3>
+                <div class="form-row">
+                    <div class="form-group"><label for="hotel_name">Nom de l'hôtel</label><input type="text" id="hotel_name" placeholder="Saisir un nom d'hôtel..."></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="date_range">Période du séjour</label><input type="text" id="date_range" readonly placeholder="Cliquez pour choisir les dates"><input type="hidden" id="date_start" name="date_start"><input type="hidden" id="date_end" name="date_end"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="stars">⭐ Catégorie</label><select id="stars"><option value="3">3 ★</option><option value="4" selected>4 ★</option><option value="5">5 ★</option></select></div>
+                    <div class="form-group"><label for="meal_plan">🍽️ Formule</label><select id="meal_plan"><option value="petit_dejeuner">Petit-déjeuner</option><option value="demi_pension">Demi-pension</option><option value="pension_complete">Pension complète</option><option value="all_in">All Inclusive</option></select></div>
+                </div>
+            </div>
+
+            <div id="daytrip-fields" class="hidden">
+                <h3 class="section-divider"><span>⏰ Horaires de l'excursion</span></h3>
+                <div class="form-row">
+                    <div class="form-group"><label for="departure_time">Heure de départ</label><input type="time" id="departure_time" value="08:00"></div>
+                    <div class="form-group"><label for="return_time">Heure de retour</label><input type="time" id="return_time" value="20:00"></div>
+                </div>
+            </div>
+
+            <h3 class="section-divider"><span>✈️ Transport</span></h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="transport_type">Moyen de transport</label>
+                    <select id="transport_type">
+                        <option value="avion">Avion</option>
+                        <option value="train">Train</option>
+                        <option value="autocar">Autocar</option>
+                        <option value="voiture">Voiture</option>
+                    </select>
+                </div>
+            </div>
+            <div id="autocar-fields" class="conditional-fields hidden">
+                <div class="form-group mb-0">
+                    <label for="bus_departure_address">Point de départ de l'autocar</label>
+                    <input type="text" id="bus_departure_address" placeholder="Ex: Place de la Gare, Bruxelles">
+                </div>
+            </div>
+
+            <h3 class="section-divider"><span>💰 Tarification & Participants</span></h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pack_price">📦 Prix du pack (€) *</label>
+                    <input type="number" id="pack_price" required placeholder="ex: 2400">
+                </div>
+                <div class="form-group">
+                    <label for="num_people">👥 Nombre de personnes</label>
+                    <input type="number" id="num_people" value="2" min="1">
+                </div>
+            </div>
+
+            <div class="mt-12">
+                <button type="submit" class="save-btn">🚀 Sauvegarder le Voyage</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key={{ g.agency_config.google_api_key }}&libraries=places&callback=initManualForm"></script>
+<script>
+    function initManualForm() {
+        const hotelInput = document.getElementById('hotel_name');
+        const destinationInput = document.getElementById('destination');
+        
+        new google.maps.places.Autocomplete(hotelInput, { types: ['establishment'] });
+        new google.maps.places.Autocomplete(destinationInput);
+
+        const dateRangePicker = new Litepicker({
+            element: document.getElementById('date_range'),
+            singleMode: false, lang: 'fr-FR', format: 'DD MMMM YYYY',
+            setup: (picker) => {
+                picker.on('selected', (date1, date2) => {
+                    const formatDate = (d) => d.toISOString().split('T')[0];
+                    document.getElementById('date_start').value = formatDate(date1.dateInstance);
+                    document.getElementById('date_end').value = formatDate(date2.dateInstance);
+                });
+            },
+        });
+
+        const tripTypeRadios = document.querySelectorAll('input[name="trip_type"]');
+        const transportSelect = document.getElementById('transport_type');
+        
+        function toggleFields() {
+            const isDayTrip = document.querySelector('input[name="trip_type"]:checked').value === 'day_trip';
+            
+            document.getElementById('sejour-fields').classList.toggle('hidden', isDayTrip);
+            document.getElementById('daytrip-fields').classList.toggle('hidden', !isDayTrip);
+            
+            if(isDayTrip) {
+                transportSelect.value = 'autocar';
+                transportSelect.disabled = true;
+            } else {
+                transportSelect.disabled = false;
+            }
+            toggleAutocarFields();
+        }
+        
+        function toggleAutocarFields() {
+            const isAutocar = transportSelect.value === 'autocar';
+            document.getElementById('autocar-fields').classList.toggle('hidden', !isAutocar);
+        }
+
+        tripTypeRadios.forEach(radio => radio.addEventListener('change', toggleFields));
+        transportSelect.addEventListener('change', toggleAutocarFields);
+
+        document.getElementById('manual-trip-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const isDayTrip = document.querySelector('input[name="trip_type"]:checked').value === 'day_trip';
+            const saveBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = saveBtn.innerHTML;
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = 'Sauvegarde...';
+
+            const formData = {
+                is_day_trip: isDayTrip,
+                destination: document.getElementById('destination').value,
+                hotel_name: isDayTrip ? '' : document.getElementById('hotel_name').value,
+                transport_type: document.getElementById('transport_type').value,
+                bus_departure_address: document.getElementById('bus_departure_address').value,
+                date_start: isDayTrip ? null : document.getElementById('date_start').value,
+                date_end: isDayTrip ? null : document.getElementById('date_end').value,
+                stars: isDayTrip ? null : document.getElementById('stars').value,
+                meal_plan: isDayTrip ? null : document.getElementById('meal_plan').value,
+                departure_time: isDayTrip ? document.getElementById('departure_time').value : null,
+                return_time: isDayTrip ? document.getElementById('return_time').value : null,
+                pack_price: document.getElementById('pack_price').value,
+                num_people: document.getElementById('num_people').value,
+            };
+
+            try {
+                const response = await fetch('/api/trips', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ form_data: formData, status: 'proposed' })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ Voyage sauvegardé avec succès !');
+                    window.location.href = '/agency/trips';
+                } else {
+                    alert('❌ Erreur: ' + result.message);
+                }
+            } catch (error) {
+                alert('❌ Erreur de connexion au serveur.');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
+        });
+
+        toggleFields();
+    }
+</script>
+{% endblock %}

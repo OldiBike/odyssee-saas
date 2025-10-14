@@ -763,6 +763,15 @@ def create_app():
         
         return render_template('agency/clients.html', clients=clients)
     
+        # Version corrigée
+    @app.route('/agency/generate/manual')
+    @agency_required
+    def generate_trip_manual():
+        """Page de génération de voyage avec formulaire manuel complet."""
+    
+        return render_template('agency/generate_manual.html', 
+                               user_margin=g.user.margin_percentage)
+    
     # ==============================================================================
     # 🔒 ROUTES PROXY GOOGLE API (SÉCURISÉES)
     # ==============================================================================
