@@ -1,6 +1,7 @@
 # app.py - Application Flask SaaS Multi-Agences Odyssée
 import os
 import json
+import requests
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -207,6 +208,24 @@ def create_app():
         hours = int(form_data.get('travel_hours', 0))
         minutes = int(form_data.get('travel_minutes', 0))
         return (hours * 60) + minutes
+    
+    # ==============================================================================
+    # HELPER POUR RÉCUPÉRER LA CLÉ GOOGLE API
+    # ==============================================================================
+    
+    def get_google_api_key():
+        """
+        Récupère la clé Google API (agence en priorité, sinon globale)
+        
+        Returns:
+            str: Clé API Google ou None
+        """
+        # Priorité 1 : Clé de l'agence (chiffrée en BDD)
+        if hasattr(g, 'agency_config') and g.agency_config.get('google_api_key'):
+            return g.agency_config['google_api_key']
+        
+        # Priorité 2 : Clé globale depuis .env
+        return app.config.get('GOOGLE_PLACES_API_KEY')
     
     # ==============================================================================
     # COMMANDE CLI - INITIALISATION
@@ -692,20 +711,21 @@ def create_app():
     def generate_trip():
         """Page de génération de voyage avec Wizard IA"""
         
-        # Vérifier que l'agence a une clé Google API
-        google_api_key = g.agency_config.get('google_api_key')
+        # Vérifier que l'agence a une clé Google API (agence ou globale)
+        google_api_key = get_google_api_key()
         
         if not google_api_key:
             return render_template('error.html', 
-                                 message='Votre agence n\'a pas configuré de clé Google API. Contactez votre administrateur.')
+                                 message='Aucune clé Google API configurée. Contactez votre administrateur.')
         
         # Vérifier le quota
         if not check_generation_quota(g.user, g.agency):
             return render_template('error.html',
                                  message='Quota de génération atteint. Réessayez demain ou contactez votre administrateur.')
         
+        # ⚠️ SÉCURITÉ : On ne passe PLUS la clé au template
+        # Les appels Google se feront via les routes proxy
         return render_template('agency/generate.html',
-                             google_api_key=google_api_key,
                              user_margin=g.user.margin_percentage)
     
     @app.route('/agency/trips')
@@ -743,6 +763,245 @@ def create_app():
         return render_template('agency/clients.html', clients=clients)
     
     # ==============================================================================
+    # 🔒 ROUTES PROXY GOOGLE API (SÉCURISÉES)
+    # ==============================================================================
+    
+    @app.route('/api/google/autocomplete', methods=['POST'])
+    @agency_required
+    def proxy_google_autocomplete():
+        """
+        🔒 Proxy sécurisé pour Google Places Autocomplete
+        La clé API reste côté serveur, jamais exposée au client
+        """
+        try:
+            data = request.get_json()
+            input_text = data.get('input', '')
+            
+            if not input_text or len(input_text) < 3:
+                return jsonify({
+                    'success': False,
+                    'error': 'Veuillez saisir au moins 3 caractères'
+                }), 400
+            
+            # Récupérer la clé API (agence ou globale)
+            api_key = get_google_api_key()
+            
+            if not api_key:
+                return jsonify({
+                    'success': False,
+                    'error': 'Clé Google API non configurée'
+                }), 500
+            
+            # Appeler l'API Google Places Autocomplete
+            url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
+            params = {
+                'input': input_text,
+                'types': 'establishment|lodging',  # Hôtels et établissements
+                'key': api_key,
+                'language': 'fr'
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return jsonify({
+                    'success': True,
+                    'predictions': result.get('predictions', [])
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Erreur API Google'
+                }), response.status_code
+                
+        except requests.Timeout:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout - API Google ne répond pas'
+            }), 504
+        except Exception as e:
+            print(f"❌ Erreur proxy autocomplete: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Erreur serveur: {str(e)}'
+            }), 500
+    
+    @app.route('/api/google/place-details', methods=['POST'])
+    @agency_required
+    def proxy_google_place_details():
+        """
+        🔒 Proxy sécurisé pour Google Places Details
+        Récupère les détails d'un lieu (adresse, photos, etc.)
+        """
+        try:
+            data = request.get_json()
+            place_id = data.get('place_id')
+            
+            if not place_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Place ID requis'
+                }), 400
+            
+            # Récupérer la clé API
+            api_key = get_google_api_key()
+            
+            if not api_key:
+                return jsonify({
+                    'success': False,
+                    'error': 'Clé Google API non configurée'
+                }), 500
+            
+            # Appeler l'API Google Places Details
+            url = 'https://maps.googleapis.com/maps/api/place/details/json'
+            params = {
+                'place_id': place_id,
+                'fields': 'name,formatted_address,geometry,photos,rating,user_ratings_total,types',
+                'key': api_key,
+                'language': 'fr'
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return jsonify({
+                    'success': True,
+                    'result': result.get('result', {})
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Erreur API Google'
+                }), response.status_code
+                
+        except requests.Timeout:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout - API Google ne répond pas'
+            }), 504
+        except Exception as e:
+            print(f"❌ Erreur proxy place details: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Erreur serveur: {str(e)}'
+            }), 500
+    
+    @app.route('/api/google/place-photos', methods=['POST'])
+    @agency_required
+    def proxy_google_place_photos():
+        """
+        🔒 Proxy sécurisé pour Google Places Photos
+        Récupère les URLs des photos d'un lieu
+        """
+        try:
+            data = request.get_json()
+            photo_reference = data.get('photo_reference')
+            max_width = data.get('max_width', 800)
+            
+            if not photo_reference:
+                return jsonify({
+                    'success': False,
+                    'error': 'Photo reference requise'
+                }), 400
+            
+            # Récupérer la clé API
+            api_key = get_google_api_key()
+            
+            if not api_key:
+                return jsonify({
+                    'success': False,
+                    'error': 'Clé Google API non configurée'
+                }), 500
+            
+            # Construire l'URL de la photo
+            photo_url = f'https://maps.googleapis.com/maps/api/place/photo'
+            params = {
+                'photoreference': photo_reference,
+                'maxwidth': max_width,
+                'key': api_key
+            }
+            
+            # Retourner l'URL (la requête finale sera faite par le navigateur)
+            # Mais sans exposer la clé
+            return jsonify({
+                'success': True,
+                'photo_url': f"{photo_url}?photoreference={photo_reference}&maxwidth={max_width}&key={api_key}"
+            })
+                
+        except Exception as e:
+            print(f"❌ Erreur proxy photos: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Erreur serveur: {str(e)}'
+            }), 500
+    
+    @app.route('/api/google/nearby-search', methods=['POST'])
+    @agency_required
+    def proxy_google_nearby_search():
+        """
+        🔒 Proxy sécurisé pour Google Places Nearby Search
+        Recherche des lieux à proximité d'un point
+        """
+        try:
+            data = request.get_json()
+            location = data.get('location')  # Format: "lat,lng"
+            radius = data.get('radius', 5000)  # Rayon en mètres
+            place_type = data.get('type', 'tourist_attraction')
+            
+            if not location:
+                return jsonify({
+                    'success': False,
+                    'error': 'Location requise (lat,lng)'
+                }), 400
+            
+            # Récupérer la clé API
+            api_key = get_google_api_key()
+            
+            if not api_key:
+                return jsonify({
+                    'success': False,
+                    'error': 'Clé Google API non configurée'
+                }), 500
+            
+            # Appeler l'API Google Places Nearby Search
+            url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+            params = {
+                'location': location,
+                'radius': radius,
+                'type': place_type,
+                'key': api_key,
+                'language': 'fr'
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return jsonify({
+                    'success': True,
+                    'results': result.get('results', [])
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Erreur API Google'
+                }), response.status_code
+                
+        except requests.Timeout:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout - API Google ne répond pas'
+            }), 504
+        except Exception as e:
+            print(f"❌ Erreur proxy nearby search: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Erreur serveur: {str(e)}'
+            }), 500
+    
+    # ==============================================================================
     # API AGENCE - GÉNÉRATION DE VOYAGES
     # ==============================================================================
     
@@ -778,7 +1037,7 @@ def create_app():
             }), 400
         
         # Récupérer la clé Gemini de l'agence
-        gemini_api_key = g.agency_config.get('google_api_key')
+        gemini_api_key = get_google_api_key()
         
         if not gemini_api_key:
             return jsonify({
@@ -1138,7 +1397,7 @@ def create_app():
         
         data = request.get_json()
         
-        gemini_api_key = g.agency_config.get('google_api_key')
+        gemini_api_key = get_google_api_key()
         
         if not gemini_api_key:
             return jsonify({
