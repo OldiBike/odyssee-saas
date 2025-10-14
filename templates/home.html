@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - Odyssée{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Hero Section -->
+    <div class="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-xl p-8 text-white mb-8">
+        <div class="text-center">
+            <h1 class="text-4xl font-bold mb-4">
+                👋 Bienvenue {{ g.user.pseudo }} !
+            </h1>
+            <p class="text-xl opacity-90">
+                {% if g.agency %}
+                    Vous êtes connecté à <strong>{{ g.agency.name }}</strong>
+                {% else %}
+                    Plateforme Odyssée SaaS
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- User Info -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold">
+                    {{ g.user.pseudo[0] }}
+                </div>
+                <div class="ml-4">
+                    <h3 class="font-semibold text-gray-800">Votre Profil</h3>
+                    <p class="text-sm text-gray-500">{{ g.user.role }}</p>
+                </div>
+            </div>
+            <div class="space-y-2 text-sm">
+                <p class="text-gray-600"><strong>Email:</strong> {{ g.user.email }}</p>
+                <p class="text-gray-600"><strong>Username:</strong> {{ g.user.username }}</p>
+            </div>
+        </div>
+
+        <!-- Agency Info -->
+        {% if g.agency %}
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-2xl">
+                    🏢
+                </div>
+                <div class="ml-4">
+                    <h3 class="font-semibold text-gray-800">Votre Agence</h3>
+                    <p class="text-sm text-gray-500">{{ g.agency.subdomain }}</p>
+                </div>
+            </div>
+            <div class="space-y-2 text-sm">
+                <p class="text-gray-600"><strong>Nom:</strong> {{ g.agency.name }}</p>
+                <p class="text-gray-600"><strong>Formule:</strong> {{ g.agency.subscription_tier }}</p>
+                <div class="mt-3 pt-3 border-t">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500">Quota mensuel</span>
+                        <span class="text-sm font-bold text-blue-600">
+                            {{ g.agency.current_month_usage }} / {{ g.agency.monthly_generation_limit }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <div class="flex items-center mb-4">
+                <div class="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center text-2xl">
+                    ⚡
+                </div>
+                <div class="ml-4">
+                    <h3 class="font-semibold text-gray-800">Actions Rapides</h3>
+                </div>
+            </div>
+            <div class="space-y-3">
+                {% if g.user.role == 'super_admin' %}
+                    <a href="{{ url_for('agencies_list') }}" class="block w-full text-center bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition">
+                        Gérer les Agences
+                    </a>
+                {% else %}
+                    <button class="block w-full text-center bg-gray-300 text-gray-500 py-2 rounded-lg cursor-not-allowed" disabled>
+                        Fonctionnalités à venir
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Message -->
+    <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg">
+        <div class="flex items-start">
+            <div class="flex-shrink-0">
+                <i class="fas fa-info-circle text-blue-500 text-2xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-blue-900 mb-2">
+                    🚧 Application en Construction
+                </h3>
+                <p class="text-blue-800 mb-3">
+                    L'interface complète est en cours de développement. Les fonctionnalités suivantes seront bientôt disponibles :
+                </p>
+                <ul class="space-y-2 text-sm text-blue-700">
+                    <li>✓ <strong>Génération de voyages</strong> - Créer des offres personnalisées</li>
+                    <li>✓ <strong>Gestion des clients</strong> - CRM intégré</li>
+                    <li>✓ <strong>Publication automatique</strong> - Fiches en ligne</li>
+                    <li>✓ <strong>Statistiques avancées</strong> - Tableaux de bord détaillés</li>
+                    <li>✓ <strong>Paiements Stripe</strong> - Encaissement sécurisé</li>
+                </ul>
+                <p class="text-blue-800 mt-4 font-medium">
+                    {% if g.user.role == 'super_admin' %}
+                        En tant que Super Admin, vous pouvez déjà gérer les agences via le menu de navigation.
+                    {% else %}
+                        Revenez bientôt pour découvrir toutes les fonctionnalités !
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
