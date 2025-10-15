@@ -36,10 +36,17 @@ class Config:
     }
     
     # ==============================================================================
-    # SESSION
+    # SESSION & REDIS
     # ==============================================================================
     
-    SESSION_TYPE = 'filesystem'
+    # Redis (optionnel - recommandé en production)
+    REDIS_URL = os.environ.get('REDIS_URL')
+    
+    # Configuration des sessions
+    SESSION_TYPE = os.environ.get('SESSION_TYPE', 'filesystem')
+    if REDIS_URL and SESSION_TYPE == 'redis':
+        SESSION_REDIS = REDIS_URL
+    
     PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
     SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
     SESSION_COOKIE_HTTPONLY = True
@@ -105,9 +112,14 @@ class Config:
     SITE_PUBLIC_URL = os.environ.get('SITE_PUBLIC_URL') or 'http://localhost:5000'
     
     # ==============================================================================
-    # STRIPE (optionnel, peut être configuré par agence)
+    # APIS EXTERNES
     # ==============================================================================
     
+    # Google APIs
+    GOOGLE_PLACES_API_KEY = os.environ.get('GOOGLE_PLACES_API_KEY')
+    YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
+    
+    # Stripe
     STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
     

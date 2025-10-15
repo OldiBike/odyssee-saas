@@ -2,21 +2,54 @@
 import os
 import json
 import requests
+import logging
 from datetime import datetime, date, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g, abort, make_response
 from flask_migrate import Migrate
 from flask_mail import Mail
+from flask_limiter import Limiter
+from flask_babel import Babel
+from flask_wtf.csrf import CSRFProtect
+from flask_session import Session # NOUVEAU
+from flask_limiter.util import get_remote_address
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
 from weasyprint import HTML
+from logging.handlers import RotatingFileHandler
+from pydantic import ValidationError
+from sqlalchemy.orm import joinedload, selectinload
 
 # Import des modèles et configuration
 from models import db, Agency, User, Client, Trip, Invoice, TripNote, ActivityLog
 from config import get_config
 from utils.crypto import init_crypto, decrypt_config, decrypt_api_key
+
+# ==============================================================================
+# IMPORTS DES SCHÉMAS DE VALIDATION
+# IMPORTS DES SERVICES (avec gestion d'erreurs)
+# ==============================================================================
+
+try:
+    from services.mailer import send_manual_payment_email
+    from services.payment import create_stripe_payment_link
+    from services.publication import publish_via_ftp
+    from services.template_engine import render_trip_template
+    from services.ai_assistant import parse_prompt, generate_program
+    from services.api_gatherer import gather_trip_data
+    SERVICES_AVAILABLE = True
+except ImportError as e:
+    # On ne peut pas encore utiliser le logger ici, car l'app n'est pas créée
+    logging.warning(f"Un ou plusieurs modules de service sont manquants ({e}). Certaines fonctionnalités seront désactivées.")
+    SERVICES_AVAILABLE = False
+
+try:
+    from schemas import AgencyCreateSchema, AgencyUpdateSchema, UserCreateSchema, UserUpdateSchema
+except ImportError:
+    logging.warning("Le fichier schemas.py est manquant. La validation des données sera désactivée.", exc_info=True)
+    AgencyCreateSchema, AgencyUpdateSchema, UserCreateSchema, UserUpdateSchema = None, None, None, None
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -33,17 +66,105 @@ def create_app():
     # Charger la configuration
     app.config.from_object(get_config())
     
+    # Initialiser Flask-Session (doit être fait AVANT les autres extensions qui utilisent la session)
+    Session(app)
+    
     # Initialiser les extensions
     db.init_app(app)
     Migrate(app, db)
-    Mail(app)
+    mail = Mail(app)
     CORS(app)
     bcrypt = Bcrypt(app)
+    csrf = CSRFProtect(app)
+    
+    # Configuration CSRF pour accepter le header X-CSRFToken
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    app.config['WTF_CSRF_HEADERS'] = ['X-CSRFToken']
+    
+    babel = Babel(app)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        app=app,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri=app.config.get('REDIS_URL') or "memory://",
+        strategy="moving-window"
+    )
     
     # Initialiser le système de chiffrement
     init_crypto(app.config['MASTER_ENCRYPTION_KEY'])
     
-    print("✅ Application Flask initialisée")
+    # ==============================================================================
+    # FILTRES JINJA2 PERSONNALISÉS
+    # ==============================================================================
+    
+    @app.template_filter('format_date')
+    def format_date_filter(date_value, format_type='medium'):
+        """
+        Filtre Jinja2 pour formater les dates.
+        
+        Args:
+            date_value: datetime object ou None
+            format_type: 'short', 'medium', 'long', 'full'
+        
+        Returns:
+            str: Date formatée en français
+        """
+        if not date_value:
+            return ''
+        
+        if isinstance(date_value, str):
+            # Si c'est déjà une chaîne, essayer de la parser
+            try:
+                from dateutil import parser
+                date_value = parser.parse(date_value)
+            except:
+                return date_value
+        
+        # Formats selon le type demandé
+        if format_type == 'short':
+            # Format court: 15/10/2025
+            return date_value.strftime('%d/%m/%Y')
+        elif format_type == 'medium':
+            # Format moyen: 15 oct. 2025
+            months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+                     'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+            return f"{date_value.day} {months[date_value.month - 1]} {date_value.year}"
+        elif format_type == 'long':
+            # Format long: 15 octobre 2025
+            months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                     'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+            return f"{date_value.day} {months[date_value.month - 1]} {date_value.year}"
+        elif format_type == 'full':
+            # Format complet avec heure: 15 octobre 2025 à 12:50
+            months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                     'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+            return f"{date_value.day} {months[date_value.month - 1]} {date_value.year} à {date_value.strftime('%H:%M')}"
+        else:
+            # Par défaut: format court
+            return date_value.strftime('%d/%m/%Y')
+    
+    # ==============================================================================
+    # CONFIGURATION DE BABEL (LOCALISATION)
+    # ==============================================================================
+    # Note: Flask-Babel 4.0 configuration simplifiée
+    # Pour l'instant, on utilise les valeurs par défaut (français)
+
+    # ==============================================================================
+    # CONFIGURATION DES LOGS
+    # ==============================================================================
+    if not app.debug and not app.testing:
+        # En production, on log dans un fichier
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+        file_handler = RotatingFileHandler('logs/odyssee.log', maxBytes=10240, backupCount=10)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('🚀 Démarrage de l\'application Odyssée')
     
     # ==============================================================================
     # MIDDLEWARE - IDENTIFICATION DE L'AGENCE
@@ -155,47 +276,49 @@ def create_app():
     # ==============================================================================
     # FONCTIONS HELPER POUR LES QUOTAS
     # ==============================================================================
-    
-    def check_generation_quota(user, agency):
+
+    def check_and_increment_quota(user_id, agency_id):
         """
-        Vérifie si l'utilisateur peut générer un voyage
+        Vérifie et incrémente les quotas de manière atomique pour éviter les race conditions.
+        Utilise un verrou `FOR UPDATE` sur les lignes utilisateur et agence.
         
         Returns:
-            bool: True si quota OK, False sinon
+            (bool, str): (True, "OK") si le quota est bon, (False, "message d'erreur") sinon.
         """
-        # Vérifier quota quotidien du vendeur
-        today = date.today()
-        if user.last_generation_date != today:
-            # Réinitialiser le compteur si on change de jour
-            user.generation_count = 0
-            user.last_generation_date = today
+        try:
+            # Verrouiller les lignes pour la mise à jour afin d'éviter les race conditions
+            user = db.session.query(User).filter_by(id=user_id).with_for_update().one()
+            agency = db.session.query(Agency).filter_by(id=agency_id).with_for_update().one()
+
+            today = date.today()
+
+            # 1. Réinitialiser les compteurs si nécessaire
+            if user.last_generation_date != today:
+                user.generation_count = 0
+                user.last_generation_date = today
+
+            if agency.usage_reset_date < today:
+                agency.current_month_usage = 0
+                agency.usage_reset_date = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+
+            # 2. Vérifier les quotas
+            if user.generation_count >= user.daily_generation_limit:
+                return False, "Votre quota de génération quotidien est atteint."
+            if agency.current_month_usage >= agency.monthly_generation_limit:
+                return False, "Le quota de génération mensuel de l'agence est atteint."
+
+            # 3. Incrémenter les compteurs
+            user.generation_count += 1
+            agency.current_month_usage += 1
+            
             db.session.commit()
-        
-        if user.generation_count >= user.daily_generation_limit:
-            return False
-        
-        # Vérifier quota mensuel de l'agence
-        if agency.usage_reset_date < today:
-            # Réinitialiser le compteur mensuel
-            agency.current_month_usage = 0
-            # Calculer la prochaine date de reset (1er du mois prochain)
-            if today.month == 12:
-                agency.usage_reset_date = date(today.year + 1, 1, 1)
-            else:
-                agency.usage_reset_date = date(today.year, today.month + 1, 1)
-            db.session.commit()
-        
-        if agency.current_month_usage >= agency.monthly_generation_limit:
-            return False
-        
-        return True
-    
-    def increment_generation_counters(user, agency):
-        """Incrémente les compteurs de génération"""
-        user.generation_count += 1
-        agency.current_month_usage += 1
-        db.session.commit()
-    
+            return True, "OK"
+
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Erreur lors de la vérification du quota : {e}", exc_info=True)
+            return False, "Erreur serveur lors de la vérification du quota."
+
     def calculate_duration_minutes(data):
         """
         Calcule la durée de trajet en minutes depuis les données du formulaire
@@ -225,7 +348,7 @@ def create_app():
             db.session.add(activity)
             db.session.commit()
         except Exception as e:
-            print(f"❌ Erreur lors de la journalisation de l'activité: {e}")
+            app.logger.error(f"Erreur lors de la journalisation de l'activité: {e}", exc_info=True)
             db.session.rollback()
     # ==============================================================================
     # HELPER POUR RÉCUPÉRER LA CLÉ GOOGLE API
@@ -245,6 +368,20 @@ def create_app():
         # Priorité 2 : Clé globale depuis .env
         return app.config.get('GOOGLE_PLACES_API_KEY')
     
+    def get_gemini_api_key():
+        """
+        Récupère la clé Gemini API pour l'IA (agence en priorité, sinon globale)
+        
+        Returns:
+            str: Clé API Gemini ou None
+        """
+        # Priorité 1 : Clé de l'agence (chiffrée en BDD)
+        if hasattr(g, 'agency_config') and g.agency_config.get('google_api_key'):
+            return g.agency_config['google_api_key']
+        
+        # Priorité 2 : Clé globale depuis .env (peut être la même que Google Places)
+        return app.config.get('GOOGLE_PLACES_API_KEY') or app.config.get('GOOGLE_GEMINI_API_KEY')
+    
     # ==============================================================================
     # COMMANDE CLI - INITIALISATION
     # ==============================================================================
@@ -255,7 +392,7 @@ def create_app():
         with app.app_context():
             # Créer toutes les tables
             db.create_all()
-            print("✅ Base de données créée")
+            app.logger.info("Base de données et tables créées avec la commande init-db.")
             
             # Vérifier si le super-admin existe déjà
             super_admin = User.query.filter_by(role='super_admin').first()
@@ -276,17 +413,18 @@ def create_app():
                 db.session.add(super_admin)
                 db.session.commit()
                 
-                print(f"✅ Super-admin créé : {super_admin.username}")
-                print(f"   Email: {super_admin.email}")
-                print(f"   Mot de passe: {app.config['SUPER_ADMIN_PASSWORD']}")
+                app.logger.info(f"Super-admin créé : {super_admin.username}")
+                app.logger.info(f"   Email: {super_admin.email}")
+                app.logger.info(f"   Mot de passe: {app.config['SUPER_ADMIN_PASSWORD']}")
             else:
-                print(f"ℹ️  Super-admin existe déjà : {super_admin.username}")
+                app.logger.info(f"Super-admin existe déjà : {super_admin.username}")
     
     # ==============================================================================
     # ROUTES D'AUTHENTIFICATION
     # ==============================================================================
     
     @app.route('/login', methods=['GET', 'POST'])
+    @limiter.limit("10 per minute") # Limite stricte pour éviter le brute-force
     def login():
         """Page de connexion."""
         if request.method == 'POST':
@@ -385,42 +523,45 @@ def create_app():
         
         elif request.method == 'POST':
             # Créer une nouvelle agence
-            data = request.get_json()
-            
-            # Vérifier que le sous-domaine n'existe pas déjà
-            existing = Agency.query.filter_by(subdomain=data['subdomain']).first()
-            if existing:
-                return jsonify({'success': False, 'message': 'Ce sous-domaine existe déjà'}), 400
-            
             try:
-                from utils.crypto import encrypt_api_key, encrypt_config
-                
+                # 1. Valider les données d'entrée avec Pydantic
+                validated_data = AgencyCreateSchema(**request.get_json())
+                data = validated_data.dict() # Convertir en dictionnaire
+
+                # 2. Vérifier les contraintes métier (unicité)
+                existing = Agency.query.filter_by(subdomain=data['subdomain']).first()
+                if existing:
+                    return jsonify({'success': False, 'message': 'Ce sous-domaine existe déjà'}), 400
+
+                # 3. Créer l'objet SQLAlchemy
                 new_agency = Agency(
                     name=data['name'],
                     subdomain=data['subdomain'],
-                    logo_url=data.get('logo_url'),
-                    primary_color=data.get('primary_color', '#3B82F6'),
-                    template_name=data.get('template_name', 'classic'),
-                    contact_email=data.get('contact_email'),
-                    contact_phone=data.get('contact_phone'),
-                    contact_address=data.get('contact_address'), # NOUVEAU
-                    manual_payment_email_template=data.get('manual_payment_email_template'),
-                    website_url=data.get('website_url'),
-                    subscription_tier=data.get('subscription_tier', 'basic'),
-                    monthly_generation_limit=int(data.get('monthly_generation_limit', 100))
+                    contact_email=data['contact_email'],
+                    logo_url=str(data['logo_url']) if data['logo_url'] else None, # Pydantic renvoie un objet URL
+                    primary_color=data['primary_color'],
+                    template_name=data['template_name'],
+                    contact_phone=data['contact_phone'],
+                    contact_address=data['contact_address'],
+                    manual_payment_email_template=data['manual_payment_email_template'],
+                    website_url=str(data['website_url']) if data['website_url'] else None,
+                    subscription_tier=data['subscription_tier'],
+                    monthly_generation_limit=data['monthly_generation_limit']
                 )
+
+                from utils.crypto import encrypt_api_key, encrypt_config
                 
                 # Chiffrer les configs si fournies
-                if data.get('google_api_key'):
+                if data['google_api_key']:
                     new_agency.google_api_key_encrypted = encrypt_api_key(data['google_api_key'])
                 
-                if data.get('stripe_api_key'):
+                if data['stripe_api_key']:
                     new_agency.stripe_api_key_encrypted = encrypt_api_key(data['stripe_api_key'])
                 
-                if data.get('mail_config'):
+                if data['mail_config']:
                     new_agency.mail_config_encrypted = encrypt_config(data['mail_config'])
 
-                if data.get('ftp_config'):
+                if data['ftp_config']:
                     new_agency.ftp_config_encrypted = encrypt_config(data['ftp_config'])
                 
                 db.session.add(new_agency)
@@ -432,8 +573,12 @@ def create_app():
                     'agency': new_agency.to_dict()
                 })
                 
+            except ValidationError as e:
+                # Erreur de validation Pydantic
+                return jsonify({'success': False, 'message': 'Données invalides', 'errors': e.errors()}), 400
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la création d'agence: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
     
     @app.route('/api/super-admin/agencies/<int:agency_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -448,47 +593,38 @@ def create_app():
         
         elif request.method == 'PUT':
             # Modifier l'agence
-            data = request.get_json()
-            
             try:
-                from utils.crypto import encrypt_api_key, encrypt_config
-                
-                # Mise à jour des champs de base
-                agency.name = data.get('name', agency.name)
-                
-                # Vérifier le sous-domaine seulement s'il a changé
-                new_subdomain = data.get('subdomain')
-                if new_subdomain and new_subdomain != agency.subdomain:
-                    existing = Agency.query.filter_by(subdomain=new_subdomain).first()
-                    if existing:
-                        return jsonify({'success': False, 'message': 'Ce sous-domaine existe déjà'}), 400
-                    agency.subdomain = new_subdomain
-                
-                agency.logo_url = data.get('logo_url', agency.logo_url)
-                agency.primary_color = data.get('primary_color', agency.primary_color)
-                agency.template_name = data.get('template_name', agency.template_name)
-                agency.contact_email = data.get('contact_email', agency.contact_email)
-                agency.contact_phone = data.get('contact_phone', agency.contact_phone)
-                agency.contact_address = data.get('contact_address', agency.contact_address) # NOUVEAU
-                agency.manual_payment_email_template = data.get('manual_payment_email_template', agency.manual_payment_email_template)
-                agency.website_url = data.get('website_url', agency.website_url)
-                agency.subscription_tier = data.get('subscription_tier', agency.subscription_tier)
-                agency.monthly_generation_limit = int(data.get('monthly_generation_limit', agency.monthly_generation_limit))
-                agency.is_active = data.get('is_active', agency.is_active)
-                
-                # Mise à jour des clés API si fournies (seulement si non vides)
-                if data.get('google_api_key'):
-                    agency.google_api_key_encrypted = encrypt_api_key(data['google_api_key'])
-                
-                if data.get('stripe_api_key'):
-                    agency.stripe_api_key_encrypted = encrypt_api_key(data['stripe_api_key'])
-                
-                if data.get('mail_config'):
-                    agency.mail_config_encrypted = encrypt_config(data['mail_config'])
+                # 1. Valider les données d'entrée avec Pydantic
+                validated_data = AgencyUpdateSchema(**request.get_json())
+                # Obtenir uniquement les champs qui ont été fournis dans la requête
+                update_data = validated_data.dict(exclude_unset=True)
 
-                if data.get('ftp_config'):
-                    agency.ftp_config_encrypted = encrypt_config(data['ftp_config'])
-                
+                # 2. Appliquer les mises à jour
+                from utils.crypto import encrypt_api_key, encrypt_config
+
+                for key, value in update_data.items():
+                    # Logique métier spécifique pour certains champs
+                    if key == 'subdomain' and value != agency.subdomain:
+                        existing = Agency.query.filter_by(subdomain=value).first()
+                        if existing:
+                            return jsonify({'success': False, 'message': 'Ce sous-domaine existe déjà'}), 400
+                        agency.subdomain = value
+                    # Champs chiffrés
+                    elif key == 'google_api_key':
+                        agency.google_api_key_encrypted = encrypt_api_key(value) if value else None
+                    elif key == 'stripe_api_key':
+                        agency.stripe_api_key_encrypted = encrypt_api_key(value) if value else None
+                    elif key == 'mail_config':
+                        agency.mail_config_encrypted = encrypt_config(value) if value else None
+                    elif key == 'ftp_config':
+                        agency.ftp_config_encrypted = encrypt_config(value) if value else None
+                    # Champs URL qui sont des objets Pydantic
+                    elif key in ['logo_url', 'website_url'] and value is not None:
+                        setattr(agency, key, str(value))
+                    # Tous les autres champs
+                    else:
+                        setattr(agency, key, value)
+
                 db.session.commit()
                 
                 return jsonify({
@@ -497,8 +633,11 @@ def create_app():
                     'agency': agency.to_dict()
                 })
                 
+            except ValidationError as e:
+                return jsonify({'success': False, 'message': 'Données invalides', 'errors': e.errors()}), 400
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la mise à jour de l'agence {agency_id}: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
         
         elif request.method == 'DELETE':
@@ -525,6 +664,7 @@ def create_app():
                 
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la suppression de l'agence {agency_id}: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
     
     # ==============================================================================
@@ -557,6 +697,17 @@ def create_app():
                 return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
             
             try:
+                # 1. Valider les données
+                validated_data = UserCreateSchema(**request.get_json())
+                data = validated_data.dict()
+
+                # 2. Vérifier les contraintes d'unicité
+                if User.query.filter_by(username=data['username']).first():
+                    return jsonify({'success': False, 'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+                if User.query.filter_by(email=data['email']).first():
+                    return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
+
+                # 3. Créer l'objet
                 # Hash du mot de passe
                 hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
                 
@@ -567,9 +718,9 @@ def create_app():
                     pseudo=data['pseudo'],
                     email=data['email'],
                     phone=data.get('phone'),
-                    role=data.get('role', 'seller'),
-                    margin_percentage=int(data.get('margin_percentage', 80)),
-                    daily_generation_limit=int(data.get('daily_generation_limit', 5)),
+                    role=data['role'],
+                    margin_percentage=data['margin_percentage'],
+                    daily_generation_limit=data['daily_generation_limit'],
                     is_active=True
                 )
                 
@@ -582,8 +733,11 @@ def create_app():
                     'user': new_user.to_dict()
                 })
                 
+            except ValidationError as e:
+                return jsonify({'success': False, 'message': 'Données invalides', 'errors': e.errors()}), 400
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la création de l'utilisateur pour l'agence {agency_id}: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
     
     @app.route('/api/super-admin/users/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -601,37 +755,26 @@ def create_app():
         
         elif request.method == 'PUT':
             # Modifier l'utilisateur
-            data = request.get_json()
-            
             try:
-                # Vérifier le username seulement s'il a changé
-                new_username = data.get('username')
-                if new_username and new_username != user.username:
-                    existing = User.query.filter_by(username=new_username).first()
-                    if existing:
-                        return jsonify({'success': False, 'message': 'Ce nom d\'utilisateur existe déjà'}), 400
-                    user.username = new_username
-                
-                # Vérifier l'email seulement s'il a changé
-                new_email = data.get('email')
-                if new_email and new_email != user.email:
-                    existing = User.query.filter_by(email=new_email).first()
-                    if existing:
-                        return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
-                    user.email = new_email
-                
-                # Mise à jour des champs
-                user.pseudo = data.get('pseudo', user.pseudo)
-                user.phone = data.get('phone', user.phone)
-                user.role = data.get('role', user.role)
-                user.margin_percentage = int(data.get('margin_percentage', user.margin_percentage))
-                user.daily_generation_limit = int(data.get('daily_generation_limit', user.daily_generation_limit))
-                user.is_active = data.get('is_active', user.is_active)
-                
-                # Changer le mot de passe seulement s'il est fourni
-                new_password = data.get('password')
-                if new_password and new_password.strip():
-                    user.password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+                # 1. Valider les données
+                validated_data = UserUpdateSchema(**request.get_json())
+                update_data = validated_data.dict(exclude_unset=True)
+
+                # 2. Appliquer les mises à jour
+                for key, value in update_data.items():
+                    if key == 'username' and value != user.username:
+                        if User.query.filter_by(username=value).first():
+                            return jsonify({'success': False, 'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+                        user.username = value
+                    elif key == 'email' and value != user.email:
+                        if User.query.filter_by(email=value).first():
+                            return jsonify({'success': False, 'message': 'Cet email existe déjà'}), 400
+                        user.email = value
+                    elif key == 'password':
+                        if value and value.strip(): # S'assurer que le mot de passe n'est pas vide
+                            user.password = bcrypt.generate_password_hash(value).decode('utf-8')
+                    else:
+                        setattr(user, key, value)
                 
                 db.session.commit()
                 
@@ -641,8 +784,12 @@ def create_app():
                     'user': user.to_dict()
                 })
                 
+
+            except ValidationError as e:
+                return jsonify({'success': False, 'message': 'Données invalides', 'errors': e.errors()}), 400
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la mise à jour de l'utilisateur {user_id}: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
         
         elif request.method == 'DELETE':
@@ -670,6 +817,7 @@ def create_app():
                 
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la suppression de l'utilisateur {user_id}: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
     
     # ==============================================================================
@@ -747,18 +895,14 @@ def create_app():
     @agency_required
     def generate_trip():
         """Page de génération de voyage avec Wizard IA"""
-        
-        # Vérifier que l'agence a une clé Google API (agence ou globale)
         google_api_key = get_google_api_key()
-        
         if not google_api_key:
             return render_template('error.html', 
                                  message='Aucune clé Google API configurée. Contactez votre administrateur.')
         
         # Vérifier le quota
-        if not check_generation_quota(g.user, g.agency):
-            return render_template('error.html',
-                                 message='Quota de génération atteint. Réessayez demain ou contactez votre administrateur.')
+        # La vérification se fait maintenant au moment de la génération via l'API,
+        # pour ne pas bloquer l'accès à la page si le quota est plein.
         
         # ⚠️ SÉCURITÉ : On ne passe PLUS la clé au template
         # Les appels Google se feront via les routes proxy
@@ -769,42 +913,69 @@ def create_app():
     @agency_required
     def trips_list():
         """Liste des voyages de l'agence"""
+        page = request.args.get('page', 1, type=int)
+        per_page = 15 # Nombre d'éléments par page
         
         # Selon le rôle, filtrer les voyages
         if g.user.role == 'agency_admin':
-            trips = Trip.query.filter_by(agency_id=g.agency.id).order_by(
+            query = Trip.query.options(
+                joinedload(Trip.user), 
+                joinedload(Trip.client)
+            ).filter_by(agency_id=g.agency.id).order_by(
                 Trip.created_at.desc()
-            ).all()
+            )
         else:
             # Seller voit seulement ses voyages
-            trips = Trip.query.filter_by(
-                agency_id=g.agency.id,
-                user_id=g.user.id
-            ).order_by(Trip.created_at.desc()).all()
+            query = Trip.query.options(
+                joinedload(Trip.user), 
+                joinedload(Trip.client)
+            ).filter_by(agency_id=g.agency.id, user_id=g.user.id).order_by(Trip.created_at.desc())
         
-        return render_template('agency/trips.html', trips=trips)
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        trips = pagination.items
+        
+        return render_template('agency/trips.html', trips=trips, pagination=pagination)
     
     @app.route('/agency/clients')
     @agency_required
     def clients_list():
         """Gestion des clients de l'agence"""
+        from sqlalchemy import or_
         
         # Seuls les admins ont accès à la liste complète des clients
         if g.user.role != 'agency_admin':
             abort(403, "Accès réservé aux administrateurs d'agence")
         
-        clients = Client.query.filter_by(agency_id=g.agency.id).order_by(
-            Client.created_at.desc()
-        ).all()
+        page = request.args.get('page', 1, type=int)
+        search_term = request.args.get('search', '')
+        per_page = 12 # 12 clients par page pour une grille 3x4
+
+        query = Client.query.filter_by(agency_id=g.agency.id)
+
+        if search_term:
+            search_filter = f"%{search_term}%"
+            query = query.filter(or_(
+                (Client.first_name + ' ' + Client.last_name).ilike(search_filter),
+                Client.email.ilike(search_filter)
+            ))
+
+        pagination = query.order_by(Client.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        clients = pagination.items
         
-        return render_template('agency/clients.html', clients=clients)
+        return render_template('agency/clients.html', clients=clients, pagination=pagination)
 
     # NOUVEAU : Page de détail d'un voyage
     @app.route('/agency/trips/<int:trip_id>')
     @agency_required
     def trip_detail(trip_id):
         """Affiche la page de détail d'un voyage."""
-        trip = Trip.query.get_or_404(trip_id)
+        # Optimisation : charger toutes les relations nécessaires en une seule fois
+        trip = Trip.query.options(
+            joinedload(Trip.user),
+            joinedload(Trip.client),
+            selectinload(Trip.notes).joinedload(TripNote.author), # Charger les notes ET leurs auteurs
+            selectinload(Trip.invoices)
+        ).filter_by(id=trip_id).first_or_404()
 
         # Vérifier que le voyage appartient bien à l'agence
         if trip.agency_id != g.agency.id:
@@ -859,8 +1030,6 @@ def create_app():
         # Déterminer le type de template
         template_type = 'day_trip' if trip.is_day_trip else 'standard'
         
-        from services.template_engine import render_trip_template
-
         # Rendre le template HTML de la fiche de voyage
         html_string = render_trip_template(
             data=full_data,
@@ -950,7 +1119,7 @@ def create_app():
             url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
             params = {
                 'input': input_text,
-                'types': 'establishment|lodging',  # Hôtels et établissements
+                'types': 'establishment',  # Hôtels et établissements
                 'key': api_key,
                 'language': 'fr'
             }
@@ -975,7 +1144,7 @@ def create_app():
                 'error': 'Timeout - API Google ne répond pas'
             }), 504
         except Exception as e:
-            print(f"❌ Erreur proxy autocomplete: {e}")
+            app.logger.error(f"Erreur proxy autocomplete: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur serveur: {str(e)}'
@@ -1036,7 +1205,7 @@ def create_app():
                 'error': 'Timeout - API Google ne répond pas'
             }), 504
         except Exception as e:
-            print(f"❌ Erreur proxy place details: {e}")
+            app.logger.error(f"Erreur proxy place details: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur serveur: {str(e)}'
@@ -1085,7 +1254,7 @@ def create_app():
             })
                 
         except Exception as e:
-            print(f"❌ Erreur proxy photos: {e}")
+            app.logger.error(f"Erreur proxy photos: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur serveur: {str(e)}'
@@ -1149,7 +1318,7 @@ def create_app():
                 'error': 'Timeout - API Google ne répond pas'
             }), 504
         except Exception as e:
-            print(f"❌ Erreur proxy nearby search: {e}")
+            app.logger.error(f"Erreur proxy nearby search: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur serveur: {str(e)}'
@@ -1161,6 +1330,7 @@ def create_app():
     
     @app.route('/api/ai-parse-prompt', methods=['POST'])
     @agency_required
+    @limiter.limit("60 per hour", key_func=lambda: session.get('user_id'))
     def api_ai_parse_prompt():
         """
         Parse un prompt en langage naturel avec Gemini AI
@@ -1179,8 +1349,6 @@ def create_app():
                 ...
             }
         """
-        from services.ai_assistant import parse_prompt
-        
         data = request.get_json()
         prompt = data.get('prompt', '').strip()
         
@@ -1191,7 +1359,7 @@ def create_app():
             }), 400
         
         # Récupérer la clé Gemini de l'agence
-        gemini_api_key = get_google_api_key()
+        gemini_api_key = get_gemini_api_key()
         
         if not gemini_api_key:
             return jsonify({
@@ -1212,7 +1380,7 @@ def create_app():
             return jsonify(parsed_data)
             
         except Exception as e:
-            print(f"❌ Erreur API Parse Prompt: {e}")
+            app.logger.error(f"Erreur API Parse Prompt: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur serveur: {str(e)}'
@@ -1220,6 +1388,7 @@ def create_app():
     
     @app.route('/api/generate-preview', methods=['POST'])
     @agency_required
+    @limiter.limit("30 per hour;10 per minute", key_func=lambda: session.get('user_id'))
     def api_generate_preview():
         """
         Génère la prévisualisation d'un voyage avec appels API externes
@@ -1241,29 +1410,24 @@ def create_app():
                 "savings": 456
             }
         """
-        # MODIFIÉ : Import de la nouvelle fonction
-        from services.api_gatherer import gather_trip_data 
         
-        data = request.get_json()
-        
-        # Vérifier le quota AVANT de générer
-        if not check_generation_quota(g.user, g.agency):
-            return jsonify({
-                'success': False,
-                'error': 'Quota de génération dépassé. Réessayez demain ou contactez votre administrateur.'
-            }), 429
+        data = request.get_json() or {}
         
         try:
+            # Vérifier et incrémenter le quota de manière atomique
+            quota_ok, message = check_and_increment_quota(g.user.id, g.agency.id)
+            if not quota_ok:
+                return jsonify({'success': False, 'error': message}), 429
+
             # MODIFIÉ : Appel du service réel
             enriched_data = gather_trip_data(data.get('form_data', {}), g.agency_config)
             
-            # Incrémenter les compteurs
-            increment_generation_counters(g.user, g.agency)
+            # Le compteur est déjà incrémenté par check_and_increment_quota
             
             return jsonify(enriched_data)
             
         except Exception as e:
-            print(f"❌ Erreur Generate Preview: {e}")
+            app.logger.error(f"Erreur Generate Preview: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': f'Erreur lors de la génération: {str(e)}'
@@ -1281,9 +1445,7 @@ def create_app():
         Response:
             HTML complet (string)
         """
-        from services.template_engine import render_trip_template
-        
-        data = request.get_json()
+        data = request.get_json() or {}
         
         try:
             # Déterminer le type de template
@@ -1297,10 +1459,10 @@ def create_app():
                 g.agency.to_dict()
             )
             
-            return html
+            return make_response(html)
             
         except Exception as e:
-            print(f"❌ Erreur Render HTML: {e}")
+            app.logger.error(f"Erreur Render HTML: {e}", exc_info=True)
             return f"<html><body><h1>Erreur: {str(e)}</h1></body></html>", 500
     
     # ==============================================================================
@@ -1316,16 +1478,33 @@ def create_app():
         """
         
         if request.method == 'GET':
+            page = request.args.get('page', 1, type=int)
+            per_page = 20
+
             # Liste des voyages selon le rôle
             if g.user.role == 'agency_admin':
-                trips = Trip.query.filter_by(agency_id=g.agency.id).all()
+                query = Trip.query.options(
+                    joinedload(Trip.user)
+                ).filter_by(agency_id=g.agency.id)
             else:
-                trips = Trip.query.filter_by(
-                    agency_id=g.agency.id,
-                    user_id=g.user.id
-                ).all()
+                query = Trip.query.options(
+                    joinedload(Trip.user)
+                ).filter_by(agency_id=g.agency.id, user_id=g.user.id)
             
-            return jsonify([trip.to_dict() for trip in trips])
+            pagination = query.order_by(Trip.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+            trips = pagination.items
+            
+            return jsonify({
+                'success': True,
+                'trips': [trip.to_dict() for trip in trips],
+                'pagination': {
+                    'total_pages': pagination.pages,
+                    'total_items': pagination.total,
+                    'current_page': pagination.page,
+                    'has_next': pagination.has_next,
+                    'has_prev': pagination.has_prev
+                }
+            })
         
         elif request.method == 'POST':
             data = request.get_json()
@@ -1403,7 +1582,7 @@ def create_app():
                 
             except Exception as e:
                 db.session.rollback()
-                print(f"❌ Erreur sauvegarde voyage: {e}")
+                app.logger.error(f"Erreur sauvegarde voyage: {e}", exc_info=True)
                 return jsonify({
                     'success': False,
                     'message': f'Erreur lors de la sauvegarde: {str(e)}'
@@ -1457,7 +1636,7 @@ def create_app():
 
         except Exception as e:
             db.session.rollback()
-            print(f"❌ Erreur mise à jour voyage: {e}")
+            app.logger.error(f"Erreur mise à jour voyage {trip_id}: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'message': f'Erreur lors de la mise à jour: {str(e)}'
@@ -1507,6 +1686,7 @@ def create_app():
             })
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de l'assignation du client au voyage {trip_id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # NOUVEAU : Route pour marquer un voyage comme vendu
@@ -1559,6 +1739,7 @@ def create_app():
             })
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de la vente du voyage {trip_id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # NOUVEAU : Route pour ajouter une note à un voyage
@@ -1601,6 +1782,7 @@ def create_app():
             return jsonify({'success': True, 'note': new_note.to_dict()})
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de l'ajout d'une note au voyage {trip_id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # NOUVEAU : Route pour publier une fiche de voyage
@@ -1619,15 +1801,12 @@ def create_app():
         if not ftp_config or not ftp_config.get('host'):
             return jsonify({'success': False, 'message': 'La configuration FTP est manquante pour cette agence.'}), 400
 
-        try:
-            # 1. Générer le HTML de la fiche
-            from services.template_engine import render_trip_template
+        try:            # 1. Générer le HTML de la fiche
             full_data = json.loads(trip.full_data_json)
             template_type = 'day_trip' if trip.is_day_trip else 'standard'
             html_content = render_trip_template(full_data, template_type, g.agency.template_name, g.agency.to_dict())
 
             # 2. Publier via FTP
-            from services.publication import publish_via_ftp
             filename = f"voyage-{trip.id}-{trip.destination.lower().replace(' ', '-')}.html"
             success = publish_via_ftp(html_content, filename, ftp_config)
 
@@ -1646,6 +1825,7 @@ def create_app():
 
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de la publication FTP du voyage {trip_id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # NOUVEAU : Route pour créer un lien de paiement Stripe
@@ -1674,7 +1854,6 @@ def create_app():
             return jsonify({'success': False, 'message': 'La clé API Stripe est manquante pour cette agence.'}), 400
 
         try:
-            from services.payment import create_stripe_payment_link
             # MODIFIÉ : L'URL de succès pointe maintenant vers une page dédiée
             success_url = url_for('payment_success', _external=True)
             
@@ -1691,6 +1870,7 @@ def create_app():
 
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de la création du lien de paiement Stripe pour le voyage {trip_id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
     
     # NOUVEAU : Route pour demander un paiement manuel
@@ -1721,7 +1901,6 @@ def create_app():
 
             # MODIFIÉ : Envoyer l'email au client
             try:
-                from services.mailer import send_manual_payment_email
                 send_manual_payment_email(
                     app_mail=mail,
                     agency_mail_config=g.agency_config.get('mail_config', {}),
@@ -1733,13 +1912,14 @@ def create_app():
                 )
             except Exception as mail_error:
                 # Ne pas bloquer l'utilisateur, mais logger l'erreur
-                print(f"⚠️ Erreur d'envoi d'email pour le voyage {trip.id}: {mail_error}")
+                app.logger.warning(f"Erreur d'envoi d'email pour le voyage {trip.id}: {mail_error}")
 
             log_activity('manual_payment_requested', g.user.id, g.agency.id, trip.id, f"Acompte de {amount}€ demandé (manuel)")
 
             return jsonify({'success': True, 'message': 'Demande de paiement manuel enregistrée avec succès.'})
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors de la demande de paiement manuel pour le voyage {trip.id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # NOUVEAU : Route pour marquer un paiement manuel comme payé
@@ -1771,6 +1951,7 @@ def create_app():
             return jsonify({'success': True, 'message': 'Paiement marqué comme payé avec succès.'})
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Erreur lors du marquage comme payé pour le voyage {trip.id}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': str(e)}), 500
 
     # ==============================================================================
@@ -1822,6 +2003,7 @@ def create_app():
                 
             except Exception as e:
                 db.session.rollback()
+                app.logger.error(f"Erreur lors de la création d'un client pour l'agence {g.agency.id}: {e}", exc_info=True)
                 return jsonify({
                     'success': False,
                     'message': f'Erreur: {str(e)}'
@@ -1833,6 +2015,7 @@ def create_app():
     
     @app.route('/api/ai-generate-program', methods=['POST'])
     @agency_required
+    @limiter.limit("60 per hour", key_func=lambda: session.get('user_id'))
     def api_ai_generate_program():
         """
         Génère un programme horaire pour une excursion d'un jour
@@ -1855,8 +2038,6 @@ def create_app():
                 ]
             }
         """
-        from services.ai_assistant import generate_program
-        
         data = request.get_json()
         
         gemini_api_key = get_google_api_key()
@@ -1883,7 +2064,7 @@ def create_app():
             })
             
         except Exception as e:
-            print(f"❌ Erreur génération programme: {e}")
+            app.logger.error(f"Erreur génération programme: {e}", exc_info=True)
             return jsonify({
                 'success': False,
                 'error': str(e)
@@ -1933,10 +2114,12 @@ def create_app():
     
     @app.errorhandler(403)
     def forbidden(e):
+        app.logger.warning(f"Accès refusé (403): {e} pour la route {request.path}")
         return jsonify({'error': 'Accès refusé', 'message': str(e)}), 403
     
     @app.errorhandler(404)
     def not_found(e):
+        app.logger.warning(f"Ressource non trouvée (404): {e} pour la route {request.path}")
         return jsonify({'error': 'Non trouvé', 'message': str(e)}), 404
     
     @app.errorhandler(500)
@@ -1954,4 +2137,4 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000)

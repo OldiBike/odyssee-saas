@@ -3,6 +3,7 @@
 {% block title %}Création Manuelle - {{ g.agency.name }}{% endblock %}
 
 {% block extra_css %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css"/>
     <style>
         .form-container { padding: 40px; }
@@ -117,21 +118,110 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ g.agency_config.google_api_key }}&libraries=places&callback=initManualForm"></script>
 <script>
     function initManualForm() {
-        // Initialisation des autocomplétions Google
-        const hotelInput = document.getElementById('hotel_name');
-        const destinationInput = document.getElementById('destination');
-        if (google && google.maps && google.maps.places) {
-            new google.maps.places.Autocomplete(hotelInput, { types: ['establishment'] });
-            new google.maps.places.Autocomplete(destinationInput);
+        // Fonction utilitaire pour échapper le HTML (doit être définie avant d'être utilisée)
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialisation des autocomplétions via l'API proxy (sécurisé)
+        initAutocomplete('hotel_name', 'establishment');
+        initAutocomplete('destination', '(cities)');
+        
+        function initAutocomplete(inputId, types) {
+            const input = document.getElementById(inputId);
+            const resultsDiv = document.createElement('div');
+            resultsDiv.className = 'autocomplete-results';
+            resultsDiv.style.cssText = 'position: absolute; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; z-index: 1000; width: 100%; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+            input.parentElement.style.position = 'relative';
+            input.parentElement.appendChild(resultsDiv);
+            
+            let debounceTimer;
+            input.addEventListener('keyup', async (e) => {
+                clearTimeout(debounceTimer);
+                const query = e.target.value;
+                
+                if (query.length < 3) {
+                    resultsDiv.style.display = 'none';
+                    return;
+                }
+                
+                debounceTimer = setTimeout(async () => {
+                    try {
+                        const response = await fetchWithCSRF('/api/google/autocomplete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ input: query })
+                        });
+                        const data = await response.json();
+                        
+                        if (data.success && data.predictions.length > 0) {
+                            resultsDiv.innerHTML = data.predictions.map(p => `
+                                <div class="autocomplete-item" style="padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;" 
+                                     data-description="${escapeHtml(p.description)}">
+                                    <strong>${escapeHtml(p.structured_formatting.main_text)}</strong><br>
+                                    <small>${escapeHtml(p.structured_formatting.secondary_text || '')}</small>
+                                </div>
+                            `).join('');
+                            resultsDiv.style.display = 'block';
+                        } else {
+                            resultsDiv.style.display = 'none';
+                        }
+                    } catch (error) {
+                        console.error('Erreur autocomplétion:', error);
+                    }
+                }, 300);
+            });
+            
+            resultsDiv.addEventListener('click', async (e) => {
+                const item = e.target.closest('.autocomplete-item');
+                if (item) {
+                    const description = item.dataset.description;
+                    input.value = description;
+                    resultsDiv.style.display = 'none';
+                    
+                    // Si c'est l'hôtel, extraire la ville et remplir la destination
+                    if (inputId === 'hotel_name') {
+                        await extractCityFromHotel(description);
+                    }
+                }
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!input.contains(e.target) && !resultsDiv.contains(e.target)) {
+                    resultsDiv.style.display = 'none';
+                }
+            });
+        }
+
+        // Fonction pour extraire la ville depuis la description de l'hôtel
+        async function extractCityFromHotel(hotelDescription) {
+            // Format typique: "Nom de l'hôtel, Rue, Ville, Pays"
+            // On prend la partie avant la dernière virgule (généralement la ville)
+            const parts = hotelDescription.split(',').map(p => p.trim());
+            
+            if (parts.length >= 2) {
+                // Prendre l'avant-dernière partie (souvent la ville)
+                const city = parts[parts.length - 2];
+                const destinationInput = document.getElementById('destination');
+                
+                // Ne remplir que si le champ destination est vide
+                if (!destinationInput.value || destinationInput.value.trim() === '') {
+                    destinationInput.value = city;
+                }
+            }
         }
 
         // Initialisation du sélecteur de dates
         const dateRangePicker = new Litepicker({
             element: document.getElementById('date_range'),
-            singleMode: false, lang: 'fr-FR', format: 'DD MMMM YYYY',
+            singleMode: false, 
+            lang: 'fr-FR', 
+            format: 'DD MMMM YYYY',
             setup: (picker) => {
                 picker.on('selected', (date1, date2) => {
                     const formatDate = (d) => d.toISOString().split('T')[0];
@@ -197,9 +287,9 @@
 
             try {
                 // Envoyer les données à l'API
-                const response = await fetch('/api/trips', {
+                const response = await fetchWithCSRF('/api/trips', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ form_data: formData, status: 'proposed' })
                 });
 
@@ -222,5 +312,8 @@
         // Initialiser l'état des champs dynamiques
         toggleFields();
     }
+    
+    // Appeler la fonction d'initialisation au chargement de la page
+    document.addEventListener('DOMContentLoaded', initManualForm);
 </script>
 {% endblock %}

@@ -384,7 +384,7 @@ async function confirmDelete() {
     if (!userToDelete) return;
     
     try {
-        const response = await fetch(`/api/super-admin/users/${userToDelete}`, {
+        const response = await fetchWithCSRF(`/api/super-admin/users/${userToDelete}`, {
             method: 'DELETE'
         });
         
@@ -414,8 +414,8 @@ document.getElementById('user-form').addEventListener('submit', async (e) => {
         phone: document.getElementById('phone').value,
         username: document.getElementById('username').value,
         role: document.getElementById('role').value,
-        margin_percentage: document.getElementById('margin_percentage').value,
-        daily_generation_limit: document.getElementById('daily_generation_limit').value,
+        margin_percentage: parseInt(document.getElementById('margin_percentage').value) || 80,
+        daily_generation_limit: parseInt(document.getElementById('daily_generation_limit').value) || 5,
     };
     
     // Mot de passe (requis en création, optionnel en édition)
@@ -443,9 +443,11 @@ document.getElementById('user-form').addEventListener('submit', async (e) => {
         
         const method = isEdit ? 'PUT' : 'POST';
         
-        const response = await fetch(url, {
+        const response = await fetchWithCSRF(url, {
             method: method,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(data)
         });
         
@@ -456,11 +458,17 @@ document.getElementById('user-form').addEventListener('submit', async (e) => {
             closeModal();
             loadUsers();
         } else {
-            alert('❌ Erreur: ' + result.message);
+            // Afficher les détails de l'erreur
+            let errorMsg = result.message || 'Erreur inconnue';
+            if (result.errors) {
+                errorMsg += '\nDétails: ' + JSON.stringify(result.errors, null, 2);
+            }
+            alert('❌ Erreur: ' + errorMsg);
+            console.error('Erreur de validation:', result);
         }
     } catch (error) {
-        alert('❌ Erreur réseau');
-        console.error(error);
+        alert('❌ Erreur réseau: ' + error.message);
+        console.error('Erreur complète:', error);
     }
 });
 </script>

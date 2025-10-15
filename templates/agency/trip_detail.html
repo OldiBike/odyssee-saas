@@ -80,7 +80,7 @@
                     {% elif trip.status == 'sold' %}✅ Vendu
                     {% endif %}
                 </span>
-                <span class="text-gray-500 text-sm">Créé par {{ trip.user.pseudo }} le {{ trip.created_at.strftime('%d/%m/%Y') }}</span>
+                <span class="text-gray-500 text-sm">Créé par {{ trip.user.pseudo }} le {{ trip.created_at|format_date('long') }}</span>
             </div>
         </div>
         <div class="flex gap-2">
@@ -156,7 +156,7 @@
                         <li class="py-3 flex justify-between items-center">
                             <div>
                                 <p class="font-medium text-gray-800">{{ invoice.invoice_number }}</p>
-                                <p class="text-sm text-gray-500">Créée le {{ invoice.created_at.strftime('%d/%m/%Y') }}</p>
+                                <p class="text-sm text-gray-500">Créée le {{ invoice.created_at|format_date('long') }}</p>
                             </div>
                             <a href="{{ url_for('generate_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="text-sm text-blue-600 hover:underline">Voir la facture <i class="fas fa-arrow-right ml-1"></i></a>
                         </li>
@@ -186,7 +186,7 @@
                         <div class="flex-1">
                             <div class="flex justify-between items-center">
                                 <span class="font-bold text-gray-800">{{ note.author.pseudo }}</span>
-                                <span class="text-xs text-gray-500">{{ note.created_at.strftime('%d/%m/%Y à %H:%M') }}</span>
+                                <span class="text-xs text-gray-500">{{ note.created_at|format_datetime('medium') }}</span>
                             </div>
                             <p class="text-gray-700 mt-1">{{ note.content | nl2br }}</p>
                         </div>
@@ -310,9 +310,11 @@ async function markAsPaid(tripId) {
     }
 
     try {
-        const response = await fetch(`/api/trips/${tripId}/mark-as-paid`, {
+        const response = await fetchWithCSRF(`/api/trips/${tripId}/mark-as-paid`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         const result = await response.json();
@@ -359,9 +361,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch(url, {
+            const response = await fetchWithCSRF(url, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: body
             });
 
@@ -388,9 +392,11 @@ async function publishTrip(tripId) {
     }
 
     try {
-        const response = await fetch(`/api/trips/${tripId}/publish`, {
+        const response = await fetchWithCSRF(`/api/trips/${tripId}/publish`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         const result = await response.json();
@@ -420,9 +426,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch(`/api/trips/{{ trip.id }}/notes`, {
+            const response = await fetchWithCSRF(`/api/trips/{{ trip.id }}/notes`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ content: content })
             });
 
@@ -445,11 +453,11 @@ function addNoteToDOM(note) {
     const noteElement = document.createElement('div');
     noteElement.className = 'note-item';
     noteElement.innerHTML = `
-        <div class="note-avatar">${note.author_pseudo[0]}</div>
+        <div class="note-avatar">${note.author.pseudo[0]}</div>
         <div class="flex-1">
             <div class="flex justify-between items-center">
-                <span class="font-bold text-gray-800">${note.author_pseudo}</span>
-                <span class="text-xs text-gray-500">${note.created_at}</span>
+                <span class="font-bold text-gray-800">${note.author.pseudo}</span>
+                <span class="text-xs text-gray-500">${new Date(note.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </div>
             <p class="text-gray-700 mt-1">${note.content.replace(/\n/g, '<br>')}</p>
         </div>

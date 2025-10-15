@@ -1,0 +1,49 @@
+{# templates/macros/_pagination.html #}
+{% macro render_pagination(pagination, endpoint) %}
+<div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-8">
+    <div class="flex flex-1 justify-between sm:hidden">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for(endpoint, page=pagination.prev_num) }}" class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Précédent</a>
+        {% endif %}
+        {% if pagination.has_next %}
+        <a href="{{ url_for(endpoint, page=pagination.next_num) }}" class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Suivant</a>
+        {% endif %}
+    </div>
+    <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+            <p class="text-sm text-gray-700">
+                Affichage de
+                <span class="font-medium">{{ pagination.first }}</span>
+                à
+                <span class="font-medium">{{ pagination.last }}</span>
+                sur
+                <span class="font-medium">{{ pagination.total }}</span>
+                résultats
+            </p>
+        </div>
+        <div>
+            <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for(endpoint, page=pagination.prev_num) }}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                    <span class="sr-only">Précédent</span>
+                    <i class="fas fa-chevron-left h-5 w-5"></i>
+                </a>
+                {% endif %}
+                {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                        <a href="{{ url_for(endpoint, page=page_num) }}" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold {{ 'z-10 bg-blue-600 text-white' if page_num == pagination.page else 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50' }}">{{ page_num }}</a>
+                    {% else %}
+                        <span class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300">...</span>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <a href="{{ url_for(endpoint, page=pagination.next_num) }}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                    <span class="sr-only">Suivant</span>
+                    <i class="fas fa-chevron-right h-5 w-5"></i>
+                </a>
+                {% endif %}
+            </nav>
+        </div>
+    </div>
+</div>
+{% endmacro %}

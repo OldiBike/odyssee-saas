@@ -117,7 +117,7 @@ class TravelWizard {
 
         try {
             // Appel API pour parser le prompt
-            const response = await fetch('/api/ai-parse-prompt', {
+            const response = await fetchWithCSRF('/api/ai-parse-prompt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt })
@@ -875,6 +875,9 @@ class TravelWizard {
             case 'dates':
                 this.initDatesListeners();
                 break;
+            case 'stars':
+                this.initStarsListeners();
+                break;
         }
     }
 
@@ -900,7 +903,7 @@ class TravelWizard {
 
             debounceTimer = setTimeout(async () => {
                 try {
-                    const response = await fetch('/api/google/autocomplete', {
+                    const response = await fetchWithCSRF('/api/google/autocomplete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ input: query })
@@ -952,7 +955,7 @@ class TravelWizard {
      */
     async getPlaceDetails(placeId) {
         try {
-            const response = await fetch('/api/google/place-details', {
+            const response = await fetchWithCSRF('/api/google/place-details', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ place_id: placeId })
@@ -1100,6 +1103,23 @@ class TravelWizard {
     }
 
     /**
+     * Événements de l'étape Catégorie (Étoiles)
+     */
+    initStarsListeners() {
+        document.querySelectorAll('.star-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                const selectedOption = e.currentTarget;
+                // Retirer la classe 'selected' de tous les autres
+                document.querySelectorAll('.star-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                // Ajouter la classe à l'élément cliqué
+                selectedOption.classList.add('selected');
+            });
+        });
+    }
+
+    /**
      * Événements de l'étape Dates
      */
     initDatesListeners() {
@@ -1171,7 +1191,7 @@ class TravelWizard {
         this.showLoading('✨ Génération du programme avec l\'IA...');
 
         try {
-            const response = await fetch('/api/ai-generate-program', {
+            const response = await fetchWithCSRF('/api/ai-generate-program', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1383,7 +1403,7 @@ class TravelWizard {
         // MODIFIÉ : Orchestration complète de la génération
         try {
             // 1. Obtenir les données enrichies (photos, vidéos, etc.)
-            const previewResponse = await fetch('/api/generate-preview', {
+            const previewResponse = await fetchWithCSRF('/api/generate-preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1394,7 +1414,7 @@ class TravelWizard {
             if (!previewResult.success) throw new Error(previewResult.error);
 
             // 2. Obtenir le HTML de la fiche de voyage
-            const renderResponse = await fetch('/api/render-html-preview', {
+            const renderResponse = await fetchWithCSRF('/api/render-html-preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(previewResult)
@@ -1464,7 +1484,7 @@ class TravelWizard {
         this.showLoading('💾 Enregistrement du voyage...');
 
         try {
-            const response = await fetch('/api/trips', {
+            const response = await fetchWithCSRF('/api/trips', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // MODIFIÉ : Le corps de la requête contient maintenant toutes les données

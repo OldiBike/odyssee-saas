@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block title %}Clients - {{ g.agency.name }}{% endblock %}
+{# 1. Importer la macro de pagination #}
+{% from 'macros/_pagination.html' import render_pagination %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
@@ -20,18 +22,41 @@
     </div>
 
     <!-- Recherche -->
-    <div class="bg-white rounded-xl shadow-md p-4 mb-6">
-        <input type="text" id="search-client" placeholder="Rechercher par nom, email..." 
-               onkeyup="filterClients()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
-    </div>
+    <form id="filters-form" class="bg-white rounded-xl shadow-md p-4 mb-6">
+        <div class="flex gap-4">
+            <input type="text" name="search" placeholder="Rechercher par nom, email..." value="{{ request.args.get('search', '') }}"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Rechercher</button>
+        </div>
+    </form>
 
     <!-- Liste clients -->
     <div id="clients-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Loading -->
-        <div id="loading" class="col-span-full text-center py-12">
-            <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-600 border-r-transparent"></div>
+        {# 2. Boucler sur les clients fournis par le serveur #}
+        {% for client in clients %}
+        <div class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition">
+            <div class="flex items-start justify-between mb-4">
+                <div class="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <span class="text-green-600 font-bold text-lg">{{ client.first_name[0] }}{{ client.last_name[0] }}</span>
+                </div>
+                <button onclick="editClient({{ client.id }}, '{{ client.first_name }}', '{{ client.last_name }}', '{{ client.email }}', '{{ client.phone or '' }}', '{{ client.address or '' }}')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>
+            <h4 class="font-bold text-gray-900 mb-2">{{ client.full_name }}</h4>
+            <div class="space-y-1 text-sm text-gray-600">
+                <p><i class="fas fa-envelope mr-2"></i>{{ client.email }}</p>
+                {% if client.phone %}<p><i class="fas fa-phone mr-2"></i>{{ client.phone }}</p>{% endif %}
+                {% if client.address %}<p><i class="fas fa-map-marker-alt mr-2"></i>{{ client.address }}</p>{% endif %}
+            </div>
         </div>
+        {% endfor %}
     </div>
+
+    {# 3. Afficher la pagination si nécessaire #}
+    {% if pagination and pagination.pages > 1 %}
+        {{ render_pagination(pagination, 'clients_list') }}
+    {% endif %}
 </div>
 
 <!-- Modal Client -->
@@ -75,68 +100,13 @@
 
 {% block extra_js %}
 <script>
-let clients = [];
-
-document.addEventListener('DOMContentLoaded', loadClients);
-
-async function loadClients() {
-    try {
-        const response = await fetch('/api/clients');
-        clients = await response.json();
-        renderClients(clients);
-    } catch (error) {
-        console.error('Erreur:', error);
-    }
-}
-
-function renderClients(clientsList) {
-    const container = document.getElementById('clients-grid');
-    
-    if (clientsList.length === 0) {
-        container.innerHTML = `
-            <div class="col-span-full text-center py-12">
-                <i class="fas fa-users text-gray-300 text-6xl mb-4"></i>
-                <p class="text-gray-600 text-xl mb-2">Aucun client</p>
-                <button onclick="openCreateModal()" class="mt-4 bg-green-600 text-white px-6 py-2 rounded-lg">
-                    Ajouter un client
-                </button>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = clientsList.map(client => `
-        <div class="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition">
-            <div class="flex items-start justify-between mb-4">
-                <div class="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                    <span class="text-green-600 font-bold text-lg">${client.first_name[0]}${client.last_name[0]}</span>
-                </div>
-                <button onclick="editClient(${client.id})" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </div>
-            <h4 class="font-bold text-gray-900 mb-2">${client.full_name}</h4>
-            <div class="space-y-1 text-sm text-gray-600">
-                <p><i class="fas fa-envelope mr-2"></i>${client.email}</p>
-                ${client.phone ? `<p><i class="fas fa-phone mr-2"></i>${client.phone}</p>` : ''}
-                ${client.address ? `<p><i class="fas fa-map-marker-alt mr-2"></i>${client.address}</p>` : ''}
-            </div>
-        </div>
-    `).join('');
-}
-
-function filterClients() {
-    const search = document.getElementById('search-client').value.toLowerCase();
-    const filtered = clients.filter(c => 
-        c.full_name.toLowerCase().includes(search) ||
-        c.email.toLowerCase().includes(search)
-    );
-    renderClients(filtered);
-}
+// Le chargement et le rendu sont maintenant faits côté serveur.
+// Nous gardons uniquement la logique pour la modale.
 
 function openCreateModal() {
     document.getElementById('modal-title').textContent = 'Nouveau Client';
     document.getElementById('client-form').reset();
+    document.getElementById('client-id').value = '';
     document.getElementById('client-modal').classList.remove('hidden');
 }
 
@@ -144,10 +114,21 @@ function closeModal() {
     document.getElementById('client-modal').classList.add('hidden');
 }
 
+function editClient(id, firstName, lastName, email, phone, address) {
+    document.getElementById('modal-title').textContent = 'Modifier le Client';
+    document.getElementById('client-id').value = id;
+    document.getElementById('first_name').value = firstName;
+    document.getElementById('last_name').value = lastName;
+    document.getElementById('email').value = email;
+    document.getElementById('phone').value = phone;
+    document.getElementById('address').value = address;
+    document.getElementById('client-modal').classList.remove('hidden');
+}
+
 document.getElementById('client-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const data = {
+    const clientData = {
         first_name: document.getElementById('first_name').value,
         last_name: document.getElementById('last_name').value,
         email: document.getElementById('email').value,
@@ -156,15 +137,16 @@ document.getElementById('client-form').addEventListener('submit', async (e) => {
     };
     
     try {
-        const response = await fetch('/api/clients', {
+        const response = await fetchWithCSRF('/api/clients', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
+            body: JSON.stringify(clientData)
         });
         
         if (response.ok) {
             closeModal();
-            loadClients();
+            showToast('Client enregistré avec succès !');
+            window.location.reload();
         }
     } catch (error) {
         alert('Erreur lors de l\'enregistrement');

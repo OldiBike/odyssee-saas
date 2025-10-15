@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Odyssée SaaS{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -139,6 +140,23 @@
                     background: backgroundColor,
                 },
             }).showToast();
+        }
+
+        /**
+         * Wrapper fetch qui ajoute automatiquement le token CSRF aux requêtes modifiantes
+         * @param {string} url - L'URL de la requête
+         * @param {object} options - Options fetch
+         * @returns {Promise} - Promesse fetch
+         */
+        async function fetchWithCSRF(url, options = {}) {
+            // Si la méthode est POST, PUT, PATCH ou DELETE, ajouter le CSRF token
+            const method = (options.method || 'GET').toUpperCase();
+            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                options.headers = options.headers || {};
+                options.headers['X-CSRFToken'] = csrfToken;
+            }
+            return fetch(url, options);
         }
     </script>
     {% block extra_js %}{% endblock %}

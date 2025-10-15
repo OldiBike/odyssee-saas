@@ -418,7 +418,7 @@ async function confirmDelete() {
     if (!agencyToDelete) return;
     
     try {
-        const response = await fetch(`/api/super-admin/agencies/${agencyToDelete}`, {
+        const response = await fetchWithCSRF(`/api/super-admin/agencies/${agencyToDelete}`, {
             method: 'DELETE'
         });
         
@@ -495,9 +495,11 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
         
         const method = isEdit ? 'PUT' : 'POST';
         
-        const response = await fetch(url, {
+        const response = await fetchWithCSRF(url, {
             method: method,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(data)
         });
         
