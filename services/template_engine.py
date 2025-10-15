@@ -1,13 +1,10 @@
 # services/template_engine.py
 """
 Moteur de génération de templates HTML pour les fiches de voyage
-Génère des fiches HTML personnalisées selon le type de voyage et le template de l'agence
 """
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime, time
-import json
-import re
 
 
 class TemplateEngine:
@@ -20,7 +17,7 @@ class TemplateEngine:
         'luxury': 'template_luxury'
     }
     
-    def __init__(self, agency_config: Dict[str, Any]):
+    def __init__(self, agency_config: Dict[str, Any]) -> None:
         """
         Initialise le moteur de templates
         
@@ -36,7 +33,7 @@ class TemplateEngine:
     
     def render_trip_template(self, trip_data: Dict[str, Any], 
                            template_type: str = 'standard',
-                           style: str = 'classic') -> str:
+                           style: Optional[str] = 'classic') -> str:
         """
         Génère le HTML complet de la fiche de voyage
         
@@ -61,7 +58,7 @@ class TemplateEngine:
         else:
             return self._render_standard_trip(trip_data, render_method)
     
-    def _render_standard_trip(self, trip_data: Dict, render_method) -> str:
+    def _render_standard_trip(self, trip_data: Dict[str, Any], render_method) -> str:
         """
         Génère une fiche pour un séjour standard
         
@@ -84,7 +81,7 @@ class TemplateEngine:
                 'dates': {
                     'start': form_data.get('date_start', ''),
                     'end': form_data.get('date_end', ''),
-                    'duration': form_data.get('duration', 0)
+                    'duration': form_data.get('estimated_duration', 0)
                 },
                 'transport': form_data.get('transport_type', ''),
                 'meal_plan': form_data.get('meal_plan', ''),
@@ -96,7 +93,7 @@ class TemplateEngine:
             'enriched': {
                 'photos': api_data.get('photos', []),
                 'videos': api_data.get('videos', []),
-                'attractions': api_data.get('attractions', []),
+                'attractions': api_data.get('attractions', {}).get('nearby', []),
                 'reviews': api_data.get('reviews_summary', {}),
                 'destination_info': api_data.get('destination_info', {}),
                 'hotel_info': api_data.get('hotel_info', {})
@@ -109,7 +106,7 @@ class TemplateEngine:
         
         return render_method(context, 'standard')
     
-    def _render_day_trip(self, trip_data: Dict, render_method) -> str:
+    def _render_day_trip(self, trip_data: Dict[str, Any], render_method) -> str:
         """
         Génère une fiche pour une excursion d'un jour
         
@@ -139,7 +136,7 @@ class TemplateEngine:
             'enriched': {
                 'photos': api_data.get('photos', []),
                 'videos': api_data.get('videos', []),
-                'attractions': api_data.get('attractions', []),
+                'attractions': api_data.get('attractions', {}).get('nearby', []),
                 'destination_info': api_data.get('destination_info', {})
             },
             'pricing': {
@@ -150,7 +147,7 @@ class TemplateEngine:
         
         return render_method(context, 'day_trip')
     
-    def _template_classic(self, context: Dict, trip_type: str) -> str:
+    def _template_classic(self, context: Dict[str, Any], trip_type: str) -> str:
         """
         Template Classic - Style traditionnel et épuré
         
@@ -395,7 +392,7 @@ class TemplateEngine:
         
         return html
     
-    def _generate_standard_content(self, context: Dict) -> str:
+    def _generate_standard_content(self, context: Dict[str, Any]) -> str:
         """
         Génère le contenu HTML pour un séjour standard
         
@@ -421,17 +418,18 @@ class TemplateEngine:
             """
         
         # Attractions
+        # MODIFIÉ : Correction de la source des attractions
         attractions_html = ""
-        if enriched['attractions']:
+        if enriched.get('attractions'):
             attractions_items = ""
-            for att in enriched['attractions'][:6]:
+            for att in enriched['attractions']:
                 img_html = f'<img src="{att["photo_url"]}" alt="{att["name"]}">' if att.get('photo_url') else '<div style="height:150px;background:#ddd;"></div>'
                 attractions_items += f"""
                 <div class="attraction-card">
                     {img_html}
                     <div class="content">
                         <div class="name">{att['name']}</div>
-                        <div class="rating">⭐ {att.get('rating', 'N/A')}</div>
+                        <div class="rating">{'⭐ ' + str(att.get('rating', '')) if att.get('rating') else ''}</div>
                     </div>
                 </div>
                 """
@@ -499,7 +497,7 @@ class TemplateEngine:
         
         return content
     
-    def _generate_day_trip_content(self, context: Dict) -> str:
+    def _generate_day_trip_content(self, context: Dict[str, Any]) -> str:
         """
         Génère le contenu HTML pour une excursion d'un jour
         
@@ -585,7 +583,7 @@ class TemplateEngine:
         
         return content
     
-    def _template_modern(self, context: Dict, trip_type: str) -> str:
+    def _template_modern(self, context: Dict[str, Any], trip_type: str) -> str:
         """
         Template Modern - Style contemporain avec animations
         À implémenter : design plus moderne avec gradients et animations CSS
@@ -593,7 +591,7 @@ class TemplateEngine:
         # Pour l'instant, utilise le template classic
         return self._template_classic(context, trip_type)
     
-    def _template_luxury(self, context: Dict, trip_type: str) -> str:
+    def _template_luxury(self, context: Dict[str, Any], trip_type: str) -> str:
         """
         Template Luxury - Style premium et élégant
         À implémenter : design luxueux avec effets visuels sophistiqués
@@ -686,7 +684,7 @@ def render_trip_template(data: Dict[str, Any],
 # TESTS
 # ==============================================================================
 
-if __name__ == "__main__":
+def _run_tests():
     """
     Tests du Template Engine
     Lancez : python services/template_engine.py
@@ -802,3 +800,6 @@ if __name__ == "__main__":
     print(f"✅ Fiche excursion générée ! Sauvegardée dans {output_file_day}")
     
     print("\n✅ Tests terminés ! Ouvrez les fichiers HTML dans votre navigateur pour voir le résultat.")
+
+if __name__ == "__main__":
+    _run_tests()

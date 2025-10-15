@@ -98,7 +98,6 @@ class TravelWizard {
      * Passe en mode formulaire manuel complet
      */
     switchToManualMode() {
-        alert('Mode manuel : formulaire complet (à implémenter)');
         console.log('Redirecting to manual form...');
         window.location.href = '/agency/generate/manual';
     }
@@ -309,6 +308,12 @@ class TravelWizard {
                         placeholder="Ex: Hotel Colosseo, Hôtel de Paris..."
                         value="${this.escapeHtml(step.prefilled)}"
                     />
+                    <!-- NOUVEAU : Container pour les résultats d'autocomplétion -->
+                    <div id="hotel-autocomplete-results" class="autocomplete-results"></div>
+                    <input type="hidden" id="hotel_place_id">
+                    <input type="hidden" id="hotel_address">
+                    <input type="hidden" id="hotel_lat">
+                    <input type="hidden" id="hotel_lng">
                     <small class="text-muted">Laissez vide si vous ne connaissez pas encore le nom</small>
                 </div>
             </div>
@@ -573,19 +578,22 @@ class TravelWizard {
                 <p class="hint">Programme horaire de votre journée</p>
                 
                 ${program.length === 0 ? `
-                    <div class="alert alert-info">
+                    <div class="alert alert-info text-center">
                         <p>Souhaitez-vous générer automatiquement un programme avec l'IA ?</p>
-                        <button type="button" id="generate-program-btn" class="btn btn-primary">
+                        <button type="button" id="generate-program-btn" class="btn btn-primary mt-2">
                             ✨ Générer le programme automatiquement
                         </button>
                     </div>
                 ` : ''}
                 
+                <!-- MODIFIÉ : Amélioration de l'affichage de la timeline -->
                 <div id="program-timeline" class="program-timeline">
-                    ${program.map((item, index) => `
-                        <div class="timeline-item" data-index="${index}">
-                            <div class="timeline-time">${item.time}</div>
-                            <div class="timeline-content">${this.escapeHtml(item.activity)}</div>
+                    ${program.map((item) => `
+                        <div class="timeline-item">
+                            <input type="time" class="timeline-time" value="${item.time}">
+                            <div class="timeline-line"></div>
+                            <input type="text" class="timeline-activity form-control" value="${this.escapeHtml(item.activity)}">
+                            <button type="button" class="btn-icon delete-timeline-item">🗑️</button>
                         </div>
                     `).join('')}
                 </div>
@@ -593,6 +601,9 @@ class TravelWizard {
                 ${program.length > 0 ? `
                     <button type="button" id="regenerate-program-btn" class="btn btn-secondary mt-3">
                         🔄 Régénérer le programme
+                    </button>
+                    <button type="button" id="add-timeline-item-btn" class="btn btn-secondary mt-3 ml-2">
+                        ➕ Ajouter une étape
                     </button>
                 ` : ''}
             </div>
@@ -845,6 +856,10 @@ class TravelWizard {
      */
     initStepListeners(step) {
         switch (step.id) {
+            // MODIFIÉ : Ajouter l'initialisation pour l'étape hôtel
+            case 'hotel':
+                this.initHotelAutocomplete();
+                break;
             case 'activities':
                 this.initActivitiesListeners();
                 break;
@@ -860,6 +875,97 @@ class TravelWizard {
             case 'dates':
                 this.initDatesListeners();
                 break;
+        }
+    }
+
+    /**
+     * NOUVEAU : Initialise l'autocomplétion pour le champ hôtel
+     */
+    initHotelAutocomplete() {
+        const input = document.getElementById('hotel_name');
+        const resultsContainer = document.getElementById('hotel-autocomplete-results');
+        let debounceTimer;
+
+        if (!input || !resultsContainer) return;
+
+        input.addEventListener('keyup', (e) => {
+            clearTimeout(debounceTimer);
+            const query = e.target.value;
+
+            if (query.length < 3) {
+                resultsContainer.innerHTML = '';
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            debounceTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/google/autocomplete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ input: query })
+                    });
+                    const data = await response.json();
+
+                    if (data.success && data.predictions.length > 0) {
+                        resultsContainer.innerHTML = data.predictions.map(p => `
+                            <div class="autocomplete-item" data-place-id="${p.place_id}" data-description="${this.escapeHtml(p.description)}">
+                                <strong>${this.escapeHtml(p.structured_formatting.main_text)}</strong>
+                                <small>${this.escapeHtml(p.structured_formatting.secondary_text)}</small>
+                            </div>
+                        `).join('');
+                        resultsContainer.style.display = 'block';
+                    } else {
+                        resultsContainer.innerHTML = '';
+                        resultsContainer.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Erreur autocomplétion:', error);
+                }
+            }, 300); // Délai de 300ms pour éviter trop d'appels
+        });
+
+        // Gérer la sélection d'un résultat
+        resultsContainer.addEventListener('click', (e) => {
+            const item = e.target.closest('.autocomplete-item');
+            if (item) {
+                const placeId = item.dataset.placeId;
+                const description = item.dataset.description;
+                input.value = description;
+                document.getElementById('hotel_place_id').value = placeId;
+                resultsContainer.innerHTML = '';
+                resultsContainer.style.display = 'none';
+                this.getPlaceDetails(placeId);
+            }
+        });
+
+        // Cacher les résultats si on clique ailleurs
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !resultsContainer.contains(e.target)) {
+                resultsContainer.style.display = 'none';
+            }
+        });
+    }
+
+    /**
+     * NOUVEAU : Récupère les détails d'un lieu (lat, lng, adresse)
+     */
+    async getPlaceDetails(placeId) {
+        try {
+            const response = await fetch('/api/google/place-details', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ place_id: placeId })
+            });
+            const data = await response.json();
+            if (data.success && data.result) {
+                document.getElementById('hotel_address').value = data.result.formatted_address || '';
+                document.getElementById('hotel_lat').value = data.result.geometry.location.lat || '';
+                document.getElementById('hotel_lng').value = data.result.geometry.location.lng || '';
+                console.log('📍 Détails du lieu récupérés:', data.result);
+            }
+        } catch (error) {
+            console.error('Erreur place details:', error);
         }
     }
 
@@ -957,6 +1063,40 @@ class TravelWizard {
         if (regenerateBtn) {
             regenerateBtn.addEventListener('click', () => this.generateProgram());
         }
+
+        // MODIFIÉ : Ajouter la logique pour les nouveaux boutons
+        const addBtn = document.getElementById('add-timeline-item-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => this.addTimelineItem());
+        }
+
+        document.querySelectorAll('.delete-timeline-item').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.target.closest('.timeline-item').remove();
+            });
+        });
+    }
+
+    /**
+     * NOUVEAU : Ajoute une nouvelle ligne vide à la timeline du programme
+     */
+    addTimelineItem() {
+        const timeline = document.getElementById('program-timeline');
+        if (!timeline) return;
+
+        const newItem = document.createElement('div');
+        newItem.className = 'timeline-item';
+        newItem.innerHTML = `
+            <input type="time" class="timeline-time" value="12:00">
+            <div class="timeline-line"></div>
+            <input type="text" class="timeline-activity form-control" placeholder="Nouvelle activité...">
+            <button type="button" class="btn-icon delete-timeline-item">🗑️</button>
+        `;
+        timeline.appendChild(newItem);
+
+        newItem.querySelector('.delete-timeline-item').addEventListener('click', (e) => {
+            e.target.closest('.timeline-item').remove();
+        });
     }
 
     /**
@@ -1070,6 +1210,10 @@ class TravelWizard {
         switch (step.id) {
             case 'hotel':
                 this.wizardData.hotel_name = document.getElementById('hotel_name')?.value || '';
+                this.wizardData.hotel_place_id = document.getElementById('hotel_place_id')?.value || '';
+                this.wizardData.hotel_address = document.getElementById('hotel_address')?.value || '';
+                this.wizardData.hotel_lat = document.getElementById('hotel_lat')?.value || '';
+                this.wizardData.hotel_lng = document.getElementById('hotel_lng')?.value || '';
                 break;
 
             case 'destination':
@@ -1102,6 +1246,16 @@ class TravelWizard {
             case 'schedule':
                 this.wizardData.departure_time = document.getElementById('departure_time_confirm')?.value || '08:00';
                 this.wizardData.return_time = document.getElementById('return_time_confirm')?.value || '20:00';
+                break;
+
+            // MODIFIÉ : Sauvegarder le programme depuis les champs de la timeline
+            case 'program':
+                this.wizardData.program = Array.from(document.querySelectorAll('.timeline-item')).map(item => {
+                    return {
+                        time: item.querySelector('.timeline-time').value,
+                        activity: item.querySelector('.timeline-activity').value
+                    };
+                }).filter(item => item.activity); // Ne pas sauvegarder les lignes vides
                 break;
 
             case 'dates':
@@ -1226,76 +1380,118 @@ class TravelWizard {
     async generateTrip() {
         this.showLoading('🚀 Génération de votre fiche de voyage...');
 
+        // MODIFIÉ : Orchestration complète de la génération
         try {
-            const response = await fetch('/api/generate-preview', {
+            // 1. Obtenir les données enrichies (photos, vidéos, etc.)
+            const previewResponse = await fetch('/api/generate-preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     form_data: this.wizardData
                 })
             });
+            const previewResult = await previewResponse.json();
+            if (!previewResult.success) throw new Error(previewResult.error);
 
-            const result = await response.json();
+            // 2. Obtenir le HTML de la fiche de voyage
+            const renderResponse = await fetch('/api/render-html-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(previewResult)
+            });
+            const htmlPreview = await renderResponse.text();
 
-            if (result.success) {
-                this.hideLoading();
-                this.showResults(result);
-            } else {
-                throw new Error(result.error);
-            }
+            this.hideLoading();
+            this.showResults(previewResult, htmlPreview);
 
         } catch (error) {
             console.error('❌ Erreur génération:', error);
             this.hideLoading();
-            this.showError('Erreur lors de la génération de la fiche');
+            this.showError(`Erreur lors de la génération de la fiche: ${error.message}`);
         }
     }
 
     /**
-     * Affiche les résultats de génération
+     * Affiche les résultats de génération et propose de sauvegarder
      */
-    showResults(result) {
-        // TODO: Implémenter l'affichage des résultats
-        // Pour l'instant, simple alert
-        alert('✅ Fiche générée avec succès !\n\nMarge: ' + result.margin + '€\nÉconomies: ' + result.savings + '€');
-        
-        console.log('📊 Résultats:', result);
-        
-        // Proposer de sauvegarder
-        if (confirm('Voulez-vous sauvegarder ce voyage ?')) {
-            this.saveTrip(result);
-        }
-    }
+    showResults(resultData, htmlPreview) {
+        // MODIFIÉ : Afficher un modal avec un iframe pour l'aperçu
+        console.log('📊 Résultats de la génération:', resultData);
 
+        let modal = document.getElementById('preview-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'preview-modal';
+            modal.className = 'preview-modal';
+            document.body.appendChild(modal);
+        }
+
+        modal.innerHTML = `
+            <div class="preview-modal-content">
+                <div class="preview-modal-header">
+                    <h2>Aperçu de la Fiche de Voyage</h2>
+                    <button id="close-preview-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="preview-modal-body">
+                    <iframe id="preview-iframe" src="about:blank"></iframe>
+                </div>
+                <div class="preview-modal-footer">
+                    <button id="edit-trip-btn" class="btn btn-secondary">Modifier</button>
+                    <button id="save-trip-btn" class="btn btn-primary">💾 Enregistrer comme proposition</button>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+
+        const iframe = document.getElementById('preview-iframe');
+        iframe.contentWindow.document.open();
+        iframe.contentWindow.document.write(htmlPreview);
+        iframe.contentWindow.document.close();
+
+        document.getElementById('close-preview-btn').onclick = () => modal.style.display = 'none';
+        document.getElementById('edit-trip-btn').onclick = () => modal.style.display = 'none'; // L'utilisateur peut alors modifier le wizard
+        document.getElementById('save-trip-btn').onclick = () => {
+            modal.style.display = 'none';
+            this.saveTrip(resultData);
+        };
+    }
+    
     /**
-     * Sauvegarde le voyage
+     * Sauvegarde le voyage en appelant l'API backend
      */
     async saveTrip(result) {
+        this.showLoading('💾 Enregistrement du voyage...');
+
         try {
             const response = await fetch('/api/trips', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // MODIFIÉ : Le corps de la requête contient maintenant toutes les données
                 body: JSON.stringify({
-                    form_data: this.wizardData,
+                    form_data: result.form_data,
                     api_data: result.api_data,
-                    status: 'proposed'
+                    status: 'proposed'             // Statut initial
                 })
             });
 
             const data = await response.json();
+            this.hideLoading();
 
             if (data.success) {
-                alert('✅ Voyage sauvegardé avec succès !');
-                window.location.href = '/agency/trips';
+                showToast('Voyage sauvegardé avec succès !');
+                window.location.href = '/agency/trips'; // Rediriger l'utilisateur
             } else {
-                throw new Error(data.message);
+                throw new Error(data.message || 'Une erreur est survenue lors de la sauvegarde.');
             }
 
         } catch (error) {
-            console.error('❌ Erreur sauvegarde:', error);
-            alert('Erreur lors de la sauvegarde');
+            console.error('Erreur sauvegarde:', error);
+            this.hideLoading();
+            this.showError(`Erreur lors de la sauvegarde: ${error.message}`);
         }
     }
+
 
     /**
      * Affiche le container du wizard
@@ -1347,15 +1543,19 @@ class TravelWizard {
      * Affiche une erreur
      */
     showError(message) {
-        alert('❌ ' + message);
+        // Utilise la fonction globale showToast
+        showToast(message, 'error');
     }
 
     /**
      * Utilitaires
      */
     escapeHtml(text) {
+        if (text === null || text === undefined) {
+            return '';
+        }
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = text.toString();
         return div.innerHTML;
     }
 

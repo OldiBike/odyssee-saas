@@ -1,0 +1,460 @@
+{% extends "base.html" %}
+
+{% block title %}Détail du Voyage: {{ trip.destination }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .status-proposed { background-color: #FEF3C7; color: #92400E; }
+    .status-assigned { background-color: #EDE9FE; color: #5B21B6; }
+    .status-sold { background-color: #D1FAE5; color: #065F46; }
+
+    .info-card {
+        background-color: white;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        padding: 1.5rem;
+    }
+    .info-card h3 {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #111827;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 0.5rem 1rem;
+    }
+    .info-grid dt {
+        font-weight: 500;
+        color: #6b7280;
+    }
+    .info-grid dd {
+        color: #111827;
+    }
+    /* NOUVEAU : Styles pour les notes */
+    .note-item {
+        display: flex;
+        gap: 1rem;
+        padding: 1rem 0;
+    }
+    .note-avatar {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 9999px;
+        background-color: #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: #4b5563;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-8">
+        <div>
+            <a href="{{ url_for('trips_list') }}" class="text-sm text-blue-600 hover:underline mb-2 block">
+                <i class="fas fa-arrow-left mr-1"></i> Retour à la liste
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">
+                {{ trip.destination }}
+            </h1>
+            <div class="mt-2 flex items-center gap-4">
+                <span class="status-badge status-{{ trip.status }}">
+                    {% if trip.status == 'proposed' %}📝 Proposé
+                    {% elif trip.status == 'assigned' %}👤 Assigné
+                    {% elif trip.status == 'sold' %}✅ Vendu
+                    {% endif %}
+                </span>
+                <span class="text-gray-500 text-sm">Créé par {{ trip.user.pseudo }} le {{ trip.created_at.strftime('%d/%m/%Y') }}</span>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <a href="{{ url_for('generate_trip_pdf', trip_id=trip.id) }}" target="_blank" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50" title="Télécharger la fiche de présentation">
+                <i class="fas fa-file-pdf mr-2"></i> Télécharger PDF
+            </a>
+            <!-- NOUVEAU : Bouton Publier -->
+            {% if not trip.is_published %}
+            <button onclick="publishTrip({{ trip.id }})" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700" title="Publier la fiche sur le serveur FTP">
+                <i class="fas fa-upload mr-2"></i> Publier
+            </button>
+            {% endif %}
+            <a href="{{ url_for('edit_trip', trip_id=trip.id) }}" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                <i class="fas fa-edit mr-2"></i> Modifier
+            </a>
+        </div>
+    </div>
+
+    <!-- Contenu principal -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Colonne de gauche -->
+        <div class="lg:col-span-2 space-y-8">
+            <!-- Détails du voyage -->
+            <div class="info-card">
+                <h3><i class="fas fa-plane-departure mr-2 text-blue-500"></i>Détails du Voyage</h3>
+                <!-- NOUVEAU : Statut de publication -->
+                {% if trip.is_published %}
+                <div class="bg-green-50 text-green-700 p-3 rounded-lg mb-4 text-sm">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    Cette fiche est publiée. 
+                    {% if g.agency.website_url %}
+                        <a href="{{ g.agency.website_url.rstrip('/') }}/{{ trip.published_filename }}" target="_blank" class="font-bold underline hover:text-green-800">Voir la fiche en ligne</a>
+                    {% else %}
+                        <span class="text-xs">(URL de base non configurée)</span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="bg-yellow-50 text-yellow-700 p-3 rounded-lg mb-4 text-sm"><i class="fas fa-exclamation-circle mr-2"></i>Cette fiche n'est pas encore publiée.</div>
+                {% endif %}
+
+                <dl class="info-grid">
+                    <dt>Hôtel</dt>
+                    <dd>{{ trip.hotel_name }}</dd>
+
+                    <dt>Type</dt>
+                    <dd>{{ "🌅 Excursion" if trip.is_day_trip else "🏨 Séjour" }}</dd>
+
+                    <dt>Prix</dt>
+                    <dd class="font-bold text-lg text-blue-600">{{ trip.price }} €</dd>
+
+                    {% if trip.is_day_trip %}
+                        <dt>Transport</dt>
+                        <dd>{{ trip.transport_type or 'N/A' }}</dd>
+                        <dt>Départ</dt>
+                        <dd>{{ trip.departure_time }} depuis {{ trip.bus_departure_address }}</dd>
+                        <dt>Retour</dt>
+                        <dd>{{ trip.return_time }}</dd>
+                    {% else %}
+                        <dt>Date de début</dt>
+                        <dd>{{ full_data.form_data.date_start or 'N/A' }}</dd>
+                        <dt>Date de fin</dt>
+                        <dd>{{ full_data.form_data.date_end or 'N/A' }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+
+            <!-- Facturation -->
+            <div class="info-card">
+                <h3><i class="fas fa-file-invoice-dollar mr-2 text-green-500"></i>Facturation</h3>
+                {% if trip.invoices %}
+                    <ul class="divide-y divide-gray-200">
+                        {% for invoice in trip.invoices %}
+                        <li class="py-3 flex justify-between items-center">
+                            <div>
+                                <p class="font-medium text-gray-800">{{ invoice.invoice_number }}</p>
+                                <p class="text-sm text-gray-500">Créée le {{ invoice.created_at.strftime('%d/%m/%Y') }}</p>
+                            </div>
+                            <a href="{{ url_for('generate_invoice_pdf', invoice_id=invoice.id) }}" target="_blank" class="text-sm text-blue-600 hover:underline">Voir la facture <i class="fas fa-arrow-right ml-1"></i></a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-gray-500 text-sm">Aucune facture n'a encore été générée pour ce voyage.</p>
+                {% endif %}
+            </div>
+
+            <!-- NOUVEAU : Section des notes internes -->
+            <div class="info-card">
+                <h3><i class="fas fa-comments mr-2 text-yellow-500"></i>Notes Internes</h3>
+                <!-- Formulaire pour ajouter une note -->
+                <form id="add-note-form" class="mb-6">
+                    <textarea id="note-content" class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-2" rows="3" placeholder="Ajouter une note..."></textarea>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 float-right">
+                        Ajouter
+                    </button>
+                </form>
+
+                <!-- Liste des notes -->
+                <div id="notes-list" class="divide-y divide-gray-200 mt-8">
+                    {% for note in trip.notes %}
+                    <div class="note-item">
+                        <div class="note-avatar">{{ note.author.pseudo[0] }}</div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-gray-800">{{ note.author.pseudo }}</span>
+                                <span class="text-xs text-gray-500">{{ note.created_at.strftime('%d/%m/%Y à %H:%M') }}</span>
+                            </div>
+                            <p class="text-gray-700 mt-1">{{ note.content | nl2br }}</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- NOUVEAU : Section Paiement -->
+            <div class="info-card">
+                <h3><i class="fab fa-stripe-s mr-2 text-indigo-500"></i>Paiement de l'acompte</h3>
+                {% if trip.payment_method == 'stripe' and trip.stripe_payment_link %}
+                    <p class="text-sm text-gray-600 mb-2">Un lien de paiement <strong>Stripe</strong> a été généré pour un acompte de <strong>{{ trip.down_payment_amount }}€</strong>.</p>
+                    <div class="flex items-center bg-gray-100 p-2 rounded-lg">
+                        <input type="text" id="payment-link-input" class="flex-1 bg-transparent border-none text-sm text-gray-700" value="{{ trip.stripe_payment_link }}" readonly>
+                        <button onclick="copyPaymentLink()" class="ml-2 px-3 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700">
+                            <i class="fas fa-copy"></i> Copier
+                        </button>
+                    </div>
+                {% elif trip.payment_method == 'manual' %}
+                    <div class="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Une demande de paiement <strong>manuel</strong> de <strong>{{ trip.down_payment_amount }}€</strong> a été envoyée au client.
+                        <div class="mt-2">
+                            Statut : <span class="font-bold">{{ trip.down_payment_status | capitalize }}</span>
+                            {% if trip.down_payment_status == 'requested' %}
+                            <button onclick="markAsPaid({{ trip.id }})" class="ml-4 text-xs font-bold underline hover:text-blue-800">Marquer comme payé</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-sm text-gray-600 mb-4">Aucune demande de paiement n'a été faite pour ce voyage.</p>
+                    <button onclick="openPaymentModal()" class="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">
+                        <i class="fas fa-file-invoice-dollar mr-2"></i> Demander un acompte
+                    </button>
+                {% endif %}
+            </div>
+
+        </div>
+
+        <!-- Colonne de droite -->
+        <div class="space-y-8">
+            <!-- Client -->
+            <div class="info-card">
+                <h3><i class="fas fa-user mr-2 text-purple-500"></i>Client</h3>
+                {% if trip.client %}
+                    <dl class="info-grid">
+                        <dt>Nom</dt>
+                        <dd>{{ trip.client.first_name }} {{ trip.client.last_name }}</dd>
+                        <dt>Email</dt>
+                        <dd><a href="mailto:{{ trip.client.email }}" class="text-blue-600 hover:underline">{{ trip.client.email }}</a></dd>
+                        <dt>Téléphone</dt>
+                        <dd><a href="tel:{{ trip.client.phone }}" class="text-blue-600 hover:underline">{{ trip.client.phone }}</a></dd>
+                    </dl>
+                {% else %}
+                    <p class="text-gray-500 text-sm">Aucun client n'est assigné à ce voyage.</p>
+                    <button class="mt-4 w-full bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200">
+                        <i class="fas fa-user-plus mr-2"></i>Assigner un client
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NOUVEAU : Modal de demande de paiement -->
+<div id="payment-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">Demander un acompte</h3>
+        <form id="payment-form" class="space-y-4">
+            <div>
+                <label for="down-payment-amount" class="block text-sm font-medium text-gray-700 mb-1">Montant de l'acompte (€)</label>
+                <input type="number" id="down-payment-amount" class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Méthode de paiement</label>
+                <div class="space-y-2">
+                    {% if g.agency_config.stripe_api_key %}
+                    <label class="flex items-center p-3 border rounded-lg has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                        <input type="radio" name="payment_method" value="stripe" checked class="h-4 w-4 text-blue-600">
+                        <span class="ml-3 text-sm font-medium">Paiement en ligne via Stripe</span>
+                    </label>
+                    {% endif %}
+                    <label class="flex items-center p-3 border rounded-lg has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                        <input type="radio" name="payment_method" value="manual" {% if not g.agency_config.stripe_api_key %}checked{% endif %} class="h-4 w-4 text-blue-600">
+                        <span class="ml-3 text-sm font-medium">Paiement manuel (virement, etc.)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="flex space-x-3 pt-4 border-t">
+                <button type="button" onclick="closeModal('payment-modal')" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                    Annuler
+                </button>
+                <button type="submit" class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    Confirmer la demande
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- NOUVEAU : Script pour la publication -->
+<script>
+function copyPaymentLink() {
+    const input = document.getElementById('payment-link-input');
+    input.select();
+    try {
+        navigator.clipboard.writeText(input.value);
+        showToast('Lien de paiement copié !');
+    } catch (err) {
+        showToast('Erreur lors de la copie.', 'error');
+    }
+}
+
+async function markAsPaid(tripId) {
+    if (!confirm("Êtes-vous sûr de vouloir marquer cet acompte comme payé ?")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/trips/${tripId}/mark-as-paid`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast(result.message);
+            window.location.reload();
+        } else {
+            showToast(result.message, 'error');
+        }
+    } catch (error) {
+        showToast('Erreur de connexion.', 'error');
+    }
+}
+
+function openPaymentModal() {
+    document.getElementById('payment-modal').classList.remove('hidden');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const paymentForm = document.getElementById('payment-form');
+    paymentForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const amountInput = document.getElementById('down-payment-amount');
+        const amount = parseInt(amountInput.value);
+        const method = document.querySelector('input[name="payment_method"]:checked').value;
+
+        if (isNaN(amount) || amount <= 0) {
+            showToast('Veuillez entrer un montant valide.', 'error');
+            return;
+        }
+
+        let url, body;
+        if (method === 'stripe') {
+            url = `/api/trips/{{ trip.id }}/create-payment-link`;
+            body = JSON.stringify({ amount: amount });
+        } else {
+            url = `/api/trips/{{ trip.id }}/request-manual-payment`;
+            body = JSON.stringify({ amount: amount });
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: body
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast(result.message);
+                closeModal('payment-modal');
+                window.location.reload();
+            } else {
+                showToast(result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Erreur de connexion.', 'error');
+        }
+    });
+});
+</script>
+
+<script>
+async function publishTrip(tripId) {
+    if (!confirm("Êtes-vous sûr de vouloir publier cette fiche de voyage ?")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/trips/${tripId}/publish`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast(result.message);
+            window.location.reload(); // Recharger la page pour voir le nouveau statut
+        } else {
+            showToast(result.message, 'error');
+        }
+    } catch (error) {
+        showToast('Erreur de connexion.', 'error');
+    }
+}
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('add-note-form');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const contentInput = document.getElementById('note-content');
+        const content = contentInput.value.trim();
+
+        if (!content) {
+            showToast('Veuillez écrire une note.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/trips/{{ trip.id }}/notes`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ content: content })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                addNoteToDOM(result.note);
+                contentInput.value = ''; // Vider le champ
+            } else {
+                showToast(result.message, 'error');
+            }
+        } catch (error) {
+            showToast('Erreur de connexion.', 'error');
+        }
+    });
+});
+
+function addNoteToDOM(note) {
+    const notesList = document.getElementById('notes-list');
+    const noteElement = document.createElement('div');
+    noteElement.className = 'note-item';
+    noteElement.innerHTML = `
+        <div class="note-avatar">${note.author_pseudo[0]}</div>
+        <div class="flex-1">
+            <div class="flex justify-between items-center">
+                <span class="font-bold text-gray-800">${note.author_pseudo}</span>
+                <span class="text-xs text-gray-500">${note.created_at}</span>
+            </div>
+            <p class="text-gray-700 mt-1">${note.content.replace(/\n/g, '<br>')}</p>
+        </div>
+    `;
+    notesList.prepend(noteElement); // Ajouter la nouvelle note en haut de la liste
+}
+</script>
+{% endblock %}

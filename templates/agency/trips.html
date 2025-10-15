@@ -24,12 +24,16 @@
         background-color: #D1FAE5;
         color: #065F46;
     }
+    /* Style pour la recherche de client */
+    #client-search-results { max-height: 200px; overflow-y: auto; }
+    .client-result-item { cursor: pointer; padding: 0.5rem; }
+    .client-result-item:hover { background-color: #f3f4f6; }
+    .client-result-item.selected { background-color: #DBEAFE; color: #1E40AF; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <h1 class="text-3xl font-bold text-gray-900 mb-2">
@@ -44,40 +48,32 @@
         </a>
     </div>
 
-    <!-- Filtres -->
     <div class="bg-white rounded-xl shadow-md p-4 mb-6">
         <div class="flex flex-wrap gap-4">
-            <select id="filter-status" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="filter-status" onchange="filterTrips()" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 <option value="">Tous les statuts</option>
                 <option value="proposed">Proposés</option>
                 <option value="assigned">Assignés</option>
                 <option value="sold">Vendus</option>
             </select>
             
-            <select id="filter-type" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <select id="filter-type" onchange="filterTrips()" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 <option value="">Tous les types</option>
                 <option value="sejour">Séjours</option>
                 <option value="day_trip">Excursions</option>
             </select>
             
             <input type="text" id="search-destination" placeholder="Rechercher destination..." 
-                   class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1">
-            
-            <button onclick="filterTrips()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700">
-                <i class="fas fa-filter mr-2"></i>Filtrer
-            </button>
+                   onkeyup="filterTrips()" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1">
         </div>
     </div>
 
-    <!-- Liste des voyages -->
     <div id="trips-container" class="bg-white rounded-xl shadow-md overflow-hidden">
-        <!-- Loading -->
         <div id="loading-trips" class="text-center py-12">
             <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
             <p class="text-gray-600 mt-4">Chargement des voyages...</p>
         </div>
 
-        <!-- Table (sera remplie par JS) -->
         <div id="trips-table" class="hidden">
             <div class="overflow-x-auto">
                 <table class="w-full">
@@ -93,13 +89,11 @@
                         </tr>
                     </thead>
                     <tbody id="trips-tbody" class="bg-white divide-y divide-gray-200">
-                        <!-- Sera rempli dynamiquement -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Empty state -->
         <div id="empty-state" class="hidden text-center py-12">
             <i class="fas fa-plane-slash text-gray-300 text-6xl mb-4"></i>
             <p class="text-gray-600 text-xl mb-2">Aucun voyage trouvé</p>
@@ -111,36 +105,80 @@
     </div>
 </div>
 
-<!-- Modal Actions -->
 <div id="action-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Actions du voyage</h3>
-        <div id="modal-content">
-            <!-- Contenu dynamique -->
+        <div class="flex justify-between items-center mb-4">
+            <h3 id="action-modal-title" class="text-xl font-bold text-gray-900">Actions du voyage</h3>
+            <button onclick="closeModal('action-modal')" class="text-gray-400 hover:text-gray-600">&times;</button>
         </div>
+        <div id="action-modal-content">
+            </div>
     </div>
 </div>
+
+<div id="assign-client-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-900">Assigner un Client</h3>
+            <button onclick="closeModal('assign-client-modal')" class="text-gray-400 hover:text-gray-600">&times;</button>
+        </div>
+        <form id="assign-client-form">
+            <input type="hidden" id="assign-trip-id">
+            <input type="hidden" id="assign-client-id">
+            
+            <div class="form-group">
+                <label for="client-search">Rechercher un client</label>
+                <input type="text" id="client-search" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Tapez un nom..." onkeyup="searchClients(event)">
+                <div id="client-search-results" class="border border-gray-300 rounded-lg mt-1"></div>
+            </div>
+            
+            <p class="text-center text-sm text-gray-500 my-2">ou</p>
+            
+            <a href="{{ url_for('clients_list') }}" target="_blank" class="block text-center w-full text-sm text-blue-600 hover:underline">
+                Créer un nouveau client <i class="fas fa-external-link-alt ml-1"></i>
+            </a>
+
+            <div class="flex space-x-3 pt-4 mt-4 border-t">
+                <button type="button" onclick="closeModal('assign-client-modal')" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                    Annuler
+                </button>
+                <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Assigner
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-let trips = [];
+let allTrips = [];
+let allClients = [];
 
-document.addEventListener('DOMContentLoaded', loadTrips);
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadTrips();
+    await loadClients();
+});
 
 async function loadTrips() {
     try {
         const response = await fetch('/api/trips');
-        trips = await response.json();
-        renderTrips(trips);
+        allTrips = await response.json();
+        renderTrips(allTrips);
     } catch (error) {
-        console.error('Erreur:', error);
-        document.getElementById('loading-trips').innerHTML = `
-            <div class="text-red-600">
-                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
-                <p>Erreur lors du chargement</p>
-            </div>
-        `;
+        console.error('Erreur chargement voyages:', error);
+        document.getElementById('loading-trips').innerHTML = `<div class="text-red-600 p-4"><p>Erreur lors du chargement des voyages.</p></div>`;
+    }
+}
+
+async function loadClients() {
+    try {
+        const response = await fetch('/api/clients');
+        allClients = await response.json();
+    } catch (error) {
+        console.error('Erreur chargement clients:', error);
     }
 }
 
@@ -151,6 +189,8 @@ function renderTrips(tripsList) {
     const tbody = document.getElementById('trips-tbody');
     
     loading.classList.add('hidden');
+    table.classList.add('hidden');
+    empty.classList.add('hidden');
     
     if (tripsList.length === 0) {
         empty.classList.remove('hidden');
@@ -160,7 +200,7 @@ function renderTrips(tripsList) {
     table.classList.remove('hidden');
     
     tbody.innerHTML = tripsList.map(trip => `
-        <tr class="hover:bg-gray-50">
+        <tr id="trip-row-${trip.id}" class="hover:bg-gray-50">
             <td class="px-6 py-4">
                 <div>
                     <div class="text-sm font-medium text-gray-900">${trip.destination}</div>
@@ -194,7 +234,7 @@ function renderTrips(tripsList) {
                 ${trip.created_at}
             </td>
             <td class="px-6 py-4 text-right">
-                <button onclick="showActions(${trip.id})" class="text-blue-600 hover:text-blue-900">
+                <button onclick="showActions(${trip.id})" class="text-blue-600 hover:text-blue-900 px-2 py-1">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
             </td>
@@ -207,60 +247,134 @@ function filterTrips() {
     const type = document.getElementById('filter-type').value;
     const search = document.getElementById('search-destination').value.toLowerCase();
     
-    let filtered = trips;
+    let filtered = allTrips;
     
-    if (status) {
-        filtered = filtered.filter(t => t.status === status);
-    }
-    
-    if (type) {
-        filtered = filtered.filter(t => type === 'day_trip' ? t.is_day_trip : !t.is_day_trip);
-    }
-    
+    if (status) filtered = filtered.filter(t => t.status === status);
+    if (type) filtered = filtered.filter(t => (type === 'day_trip' ? t.is_day_trip : !t.is_day_trip));
     if (search) {
         filtered = filtered.filter(t => 
             t.destination.toLowerCase().includes(search) ||
             (t.hotel_name && t.hotel_name.toLowerCase().includes(search))
         );
     }
-    
     renderTrips(filtered);
 }
 
 function showActions(tripId) {
-    const trip = trips.find(t => t.id === tripId);
+    const trip = allTrips.find(t => t.id === tripId);
     const modal = document.getElementById('action-modal');
-    const content = document.getElementById('modal-content');
+    const content = document.getElementById('action-modal-content');
     
-    content.innerHTML = `
-        <div class="space-y-3">
-            <button class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg">
-                <i class="fas fa-eye mr-2"></i> Voir détails
-            </button>
-            ${trip.status === 'proposed' ? `
-                <button class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg">
-                    <i class="fas fa-user-plus mr-2"></i> Assigner un client
-                </button>
-            ` : ''}
-            ${trip.status === 'assigned' ? `
-                <button class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg">
-                    <i class="fas fa-check mr-2"></i> Marquer comme vendu
-                </button>
-            ` : ''}
-            <button class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg">
-                <i class="fas fa-download mr-2"></i> Télécharger PDF
-            </button>
-            <button onclick="closeModal()" class="w-full text-left px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
-                Fermer
-            </button>
-        </div>
+    // MODIFIÉ : Le bouton "Voir détails" est maintenant un lien direct
+    let actionsHtml = `<a href="/agency/trips/${trip.id}" class="block w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg"><i class="fas fa-eye mr-2"></i> Voir détails</a>`;
+
+    if (trip.status === 'proposed') {
+        actionsHtml += `<button onclick="openAssignClientModal(${trip.id})" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg"><i class="fas fa-user-plus mr-2"></i> Assigner un client</button>`;
+    }
+    if (trip.status === 'assigned') {
+        // MODIFIÉ
+        actionsHtml += `<button onclick="markAsSold(${trip.id})" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg"><i class="fas fa-check mr-2"></i> Marquer comme vendu</button>`;
+    }
+
+    actionsHtml += `
+        <button class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg"><i class="fas fa-download mr-2"></i> Télécharger PDF</button>
+        <button onclick="closeModal('action-modal')" class="w-full mt-2 text-left px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg">Fermer</button>
     `;
     
+    document.getElementById('action-modal-title').textContent = `Actions pour: ${trip.destination}`;
+    content.innerHTML = actionsHtml;
     modal.classList.remove('hidden');
 }
 
-function closeModal() {
-    document.getElementById('action-modal').classList.add('hidden');
+function openAssignClientModal(tripId) {
+    closeModal('action-modal');
+    document.getElementById('assign-trip-id').value = tripId;
+    document.getElementById('assign-client-id').value = '';
+    document.getElementById('client-search').value = '';
+    document.getElementById('client-search-results').innerHTML = '';
+    document.getElementById('assign-client-modal').classList.remove('hidden');
+    searchClients(); // Afficher tous les clients au début
+}
+
+function searchClients() {
+    const searchTerm = document.getElementById('client-search').value.toLowerCase();
+    const resultsContainer = document.getElementById('client-search-results');
+    
+    const filteredClients = allClients.filter(c => c.full_name.toLowerCase().includes(searchTerm));
+    
+    if (filteredClients.length > 0) {
+        resultsContainer.innerHTML = filteredClients.map(c => `
+            <div class="client-result-item" data-id="${c.id}" onclick="selectClient(${c.id}, '${c.full_name}')">
+                <strong>${c.full_name}</strong><br>
+                <span class="text-sm text-gray-500">${c.email}</span>
+            </div>
+        `).join('');
+    } else {
+        resultsContainer.innerHTML = `<div class="p-2 text-sm text-gray-500">Aucun client trouvé.</div>`;
+    }
+}
+
+function selectClient(clientId, clientName) {
+    document.getElementById('assign-client-id').value = clientId;
+    document.getElementById('client-search').value = clientName;
+    document.getElementById('client-search-results').innerHTML = ''; // Vider les résultats
+}
+
+document.getElementById('assign-client-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const tripId = document.getElementById('assign-trip-id').value;
+    const clientId = document.getElementById('assign-client-id').value;
+
+    if (!clientId) {
+        showToast('Veuillez sélectionner un client.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/trips/${tripId}/assign`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ client_id: clientId })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message);
+            closeModal('assign-client-modal');
+            await loadTrips(); // Recharger les voyages pour voir la mise à jour
+        } else {
+            showToast('Erreur: ' + result.message, 'error');
+        }
+    } catch (error) {
+        showToast('Erreur de connexion.', 'error');
+    }
+});
+
+// NOUVEAU : Ajout de la fonction pour marquer comme vendu
+async function markAsSold(tripId) {
+    closeModal('action-modal');
+    if (!confirm('Êtes-vous sûr de vouloir marquer ce voyage comme vendu ?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/trips/${tripId}/sell`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message);
+            await loadTrips(); // Recharger les voyages pour voir la mise à jour
+        } else {
+            showToast('Erreur: ' + result.message, 'error');
+        }
+    } catch (error) {
+        showToast('Erreur de connexion.', 'error');
+    }
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
 }
 </script>
 {% endblock %}

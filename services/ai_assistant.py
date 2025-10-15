@@ -21,7 +21,8 @@ class AIAssistant:
             api_key: Clé API Google Gemini de l'agence
         """
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        # MODIFIÉ : Utilisation du modèle qui fonctionne pour votre configuration.
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     def parse_travel_prompt(self, prompt: str) -> Dict[str, Any]:
         """

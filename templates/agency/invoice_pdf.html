@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Facture {{ invoice.invoice_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        body {
+            font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+            font-size: 12px;
+            color: #333;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+        /* NOUVEAU : Style pour le logo */
+        .logo {
+            max-width: 180px;
+            max-height: 70px;
+            margin-bottom: 15px;
+        }
+        .agency-info {
+            text-align: left;
+        }
+        .agency-info h1 {
+            font-size: 24px;
+            color: {{ agency.primary_color or '#333' }};
+            margin: 0;
+        }
+        .invoice-details {
+            text-align: right;
+        }
+        .invoice-details h2 {
+            font-size: 28px;
+            margin: 0;
+        }
+        .addresses {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+        }
+        .client-info {
+            max-width: 50%;
+        }
+        .info-block {
+            line-height: 1.5;
+        }
+        .info-block strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .totals {
+            margin-top: 30px;
+            width: 40%;
+            margin-left: 60%;
+        }
+        .totals table {
+            width: 100%;
+        }
+        .totals .total-amount {
+            font-size: 18px;
+            font-weight: bold;
+            background-color: {{ agency.primary_color or '#333' }};
+            color: white;
+        }
+        .footer {
+            position: fixed;
+            bottom: -1cm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 10px;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <!-- MODIFIÉ : Ajout du logo et de l'adresse -->
+        <div class="agency-info">
+            {% if agency.logo_url %}<img src="{{ agency.logo_url }}" alt="Logo" class="logo">{% endif %}
+            <h1>{{ agency.name }}</h1>
+            <p>{{ agency.contact_address or '' }}</p>
+            <p>{{ agency.contact_email or '' }} - {{ agency.contact_phone or '' }}</p>
+        </div>
+        <div class="invoice-details">
+            <h2>FACTURE</h2>
+            <p><strong>Numéro :</strong> {{ invoice.invoice_number }}</p>
+            <p><strong>Date :</strong> {{ invoice.created_at.strftime('%d/%m/%Y') }}</p>
+        </div>
+    </div>
+
+    <div class="addresses">
+        <div class="client-info info-block">
+            <strong>Facturé à :</strong>
+            {{ client.first_name }} {{ client.last_name }}<br>
+            {{ client.address or '' }}<br>
+            {{ client.email or '' }}
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr><th>Description</th><th>Quantité</th><th>Prix Unitaire</th><th>Total</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Voyage à {{ trip.destination }}</td><td>1</td><td>{{ trip.price }} €</td><td>{{ trip.price }} €</td></tr>
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <table>
+            <tr><th>Total HT</th><td>{{ "%.2f"|format(trip.price / 1.2) }} €</td></tr>
+            <tr><th>TVA (20%)</th><td>{{ "%.2f"|format(trip.price - (trip.price / 1.2)) }} €</td></tr>
+            <tr class="total-amount"><td>Total TTC</td><td>{{ trip.price }} €</td></tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        Merci de votre confiance ! - {{ agency.name }}
+    </div>
+</body>
+</html>

@@ -5,15 +5,16 @@ import requests
 from datetime import datetime, date, timedelta
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g, abort
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g, abort, make_response
 from flask_migrate import Migrate
 from flask_mail import Mail
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
+from weasyprint import HTML
 
 # Import des modèles et configuration
-from models import db, Agency, User, Client, Trip, Invoice
+from models import db, Agency, User, Client, Trip, Invoice, TripNote, ActivityLog
 from config import get_config
 from utils.crypto import init_crypto, decrypt_config, decrypt_api_key
 
@@ -210,6 +211,22 @@ def create_app():
         minutes = int(form_data.get('travel_minutes', 0))
         return (hours * 60) + minutes
     
+    # NOUVEAU : Helper pour logger les activités
+    def log_activity(action: str, user_id: int, agency_id: int, trip_id: int = None, details: str = None):
+        """Enregistre une activité dans le journal de l'agence."""
+        try:
+            activity = ActivityLog(
+                action=action,
+                user_id=user_id,
+                agency_id=agency_id,
+                trip_id=trip_id,
+                details=details
+            )
+            db.session.add(activity)
+            db.session.commit()
+        except Exception as e:
+            print(f"❌ Erreur lors de la journalisation de l'activité: {e}")
+            db.session.rollback()
     # ==============================================================================
     # HELPER POUR RÉCUPÉRER LA CLÉ GOOGLE API
     # ==============================================================================
@@ -386,6 +403,9 @@ def create_app():
                     template_name=data.get('template_name', 'classic'),
                     contact_email=data.get('contact_email'),
                     contact_phone=data.get('contact_phone'),
+                    contact_address=data.get('contact_address'), # NOUVEAU
+                    manual_payment_email_template=data.get('manual_payment_email_template'),
+                    website_url=data.get('website_url'),
                     subscription_tier=data.get('subscription_tier', 'basic'),
                     monthly_generation_limit=int(data.get('monthly_generation_limit', 100))
                 )
@@ -399,6 +419,9 @@ def create_app():
                 
                 if data.get('mail_config'):
                     new_agency.mail_config_encrypted = encrypt_config(data['mail_config'])
+
+                if data.get('ftp_config'):
+                    new_agency.ftp_config_encrypted = encrypt_config(data['ftp_config'])
                 
                 db.session.add(new_agency)
                 db.session.commit()
@@ -446,6 +469,9 @@ def create_app():
                 agency.template_name = data.get('template_name', agency.template_name)
                 agency.contact_email = data.get('contact_email', agency.contact_email)
                 agency.contact_phone = data.get('contact_phone', agency.contact_phone)
+                agency.contact_address = data.get('contact_address', agency.contact_address) # NOUVEAU
+                agency.manual_payment_email_template = data.get('manual_payment_email_template', agency.manual_payment_email_template)
+                agency.website_url = data.get('website_url', agency.website_url)
                 agency.subscription_tier = data.get('subscription_tier', agency.subscription_tier)
                 agency.monthly_generation_limit = int(data.get('monthly_generation_limit', agency.monthly_generation_limit))
                 agency.is_active = data.get('is_active', agency.is_active)
@@ -459,6 +485,9 @@ def create_app():
                 
                 if data.get('mail_config'):
                     agency.mail_config_encrypted = encrypt_config(data['mail_config'])
+
+                if data.get('ftp_config'):
+                    agency.ftp_config_encrypted = encrypt_config(data['ftp_config'])
                 
                 db.session.commit()
                 
@@ -693,6 +722,14 @@ def create_app():
             ).count()
             total_clients = 0  # Le seller n'a pas accès à tous les clients
         
+        # Récupérer les dernières activités
+        if g.user.role == 'agency_admin':
+            activities = ActivityLog.query.filter_by(agency_id=g.agency.id).order_by(ActivityLog.created_at.desc()).limit(10).all()
+        else:
+            # Le vendeur ne voit que ses activités
+            activities = ActivityLog.query.filter_by(user_id=g.user.id).order_by(ActivityLog.created_at.desc()).limit(10).all()
+
+
         stats = {
             'total_trips': total_trips,
             'proposed_trips': proposed_trips,
@@ -704,8 +741,7 @@ def create_app():
             'agency_quota_used': g.agency.current_month_usage,
             'agency_quota_limit': g.agency.monthly_generation_limit
         }
-        
-        return render_template('agency/dashboard.html', stats=stats)
+        return render_template('agency/dashboard.html', stats=stats, activities=activities)
     
     @app.route('/agency/generate')
     @agency_required
@@ -762,6 +798,114 @@ def create_app():
         ).all()
         
         return render_template('agency/clients.html', clients=clients)
+
+    # NOUVEAU : Page de détail d'un voyage
+    @app.route('/agency/trips/<int:trip_id>')
+    @agency_required
+    def trip_detail(trip_id):
+        """Affiche la page de détail d'un voyage."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Vérifier que le voyage appartient bien à l'agence
+        if trip.agency_id != g.agency.id:
+            abort(403)
+
+        # Si l'utilisateur est un vendeur, vérifier qu'il a créé le voyage
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403, "Vous n'avez pas la permission de voir ce voyage.")
+
+        # Charger les données JSON pour un affichage complet
+        full_data = json.loads(trip.full_data_json)
+        return render_template('agency/trip_detail.html', trip=trip, full_data=full_data)
+
+    # NOUVEAU : Page pour modifier un voyage
+    @app.route('/agency/trips/<int:trip_id>/edit')
+    @agency_required
+    def edit_trip(trip_id):
+        """Affiche le formulaire de modification d'un voyage."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité : Vérifier l'appartenance
+        if trip.agency_id != g.agency.id:
+            abort(403)
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403)
+
+        # On ne peut modifier que les voyages non vendus
+        if trip.status == 'sold':
+            return render_template('error.html', message="Impossible de modifier un voyage qui a été vendu.")
+
+        full_data = json.loads(trip.full_data_json)
+        return render_template('agency/edit_trip.html', trip=trip, full_data=full_data)
+
+    # NOUVEAU : Route pour générer le PDF de la fiche de présentation du voyage
+    @app.route('/agency/trips/<int:trip_id>/pdf')
+    @agency_required
+    def generate_trip_pdf(trip_id):
+        """Génère et retourne le PDF de la fiche de présentation d'un voyage."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité : Vérifier que le voyage appartient bien à l'agence
+        if trip.agency_id != g.agency.id:
+            abort(403, "Accès non autorisé à ce voyage.")
+
+        # Sécurité : Vendeur ne peut voir que ses propres voyages
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403, "Vous n'avez pas la permission de voir ce voyage.")
+
+        # Charger les données complètes du voyage
+        full_data = json.loads(trip.full_data_json)
+        
+        # Déterminer le type de template
+        template_type = 'day_trip' if trip.is_day_trip else 'standard'
+        
+        from services.template_engine import render_trip_template
+
+        # Rendre le template HTML de la fiche de voyage
+        html_string = render_trip_template(
+            data=full_data,
+            template_type=template_type,
+            agency_style=g.agency.template_name,
+            agency_config=g.agency.to_dict()
+        )
+
+        pdf = HTML(string=html_string).write_pdf()
+        response = make_response(pdf)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename=voyage-{trip.destination.replace(" ", "-")}.pdf'
+        return response
+
+    # NOUVEAU : Route pour générer le PDF d'une facture
+    @app.route('/agency/invoices/<int:invoice_id>/pdf')
+    @agency_required
+    def generate_invoice_pdf(invoice_id):
+        """Génère et retourne le PDF d'une facture."""
+        invoice = Invoice.query.get_or_404(invoice_id)
+        trip = invoice.trip
+
+        # Sécurité : Vérifier que la facture appartient bien à l'agence
+        if trip.agency_id != g.agency.id:
+            abort(403, "Accès non autorisé à cette facture.")
+
+        # Sécurité : Vendeur ne peut voir que ses propres factures
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403, "Vous n'avez pas la permission de voir cette facture.")
+
+        # Rendre le template HTML de la facture
+        html_string = render_template(
+            'agency/invoice_pdf.html',
+            invoice=invoice,
+            trip=trip,
+            client=trip.client,
+            agency=g.agency
+        )
+
+        # Générer le PDF et créer la réponse
+        pdf = HTML(string=html_string).write_pdf()
+        response = make_response(pdf)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename={invoice.invoice_number}.pdf'
+        return response
     
         # Version corrigée
     @app.route('/agency/generate/manual')
@@ -1097,7 +1241,8 @@ def create_app():
                 "savings": 456
             }
         """
-        from services.api_gatherer import gather_trip_data
+        # MODIFIÉ : Import de la nouvelle fonction
+        from services.api_gatherer import gather_trip_data 
         
         data = request.get_json()
         
@@ -1109,7 +1254,7 @@ def create_app():
             }), 429
         
         try:
-            # Appeler le service api_gatherer pour enrichir les données
+            # MODIFIÉ : Appel du service réel
             enriched_data = gather_trip_data(data.get('form_data', {}), g.agency_config)
             
             # Incrémenter les compteurs
@@ -1186,14 +1331,22 @@ def create_app():
             data = request.get_json()
             
             try:
-                # Créer le client si nécessaire
                 client_id = None
-                if data.get('status') == 'assigned':
-                    if data.get('form_data', {}).get('client_id'):
-                        # Client existant
-                        client_id = data['form_data']['client_id']
+                form_data = data.get('form_data', {})
+                
+                # Gestion du client (existant ou nouveau)
+                if form_data.get('client_id'):
+                    client_id = int(form_data.get('client_id'))
+                elif data.get('client_email'):
+                    # Vérifier si un client avec cet email existe déjà pour cette agence
+                    existing_client = Client.query.filter_by(
+                        agency_id=g.agency.id,
+                        email=data.get('client_email')
+                    ).first()
+
+                    if existing_client:
+                        client_id = existing_client.id
                     else:
-                        # Nouveau client
                         new_client = Client(
                             agency_id=g.agency.id,
                             first_name=data.get('client_first_name', ''),
@@ -1204,34 +1357,44 @@ def create_app():
                         db.session.add(new_client)
                         db.session.flush()
                         client_id = new_client.id
+
+                # Déterminer le statut
+                status = data.get('status', 'proposed')
+                assigned_at = datetime.utcnow() if status == 'assigned' else None
                 
                 # Créer le voyage
-                form_data = data.get('form_data', {})
-                
                 new_trip = Trip(
                     agency_id=g.agency.id,
                     user_id=g.user.id,
                     client_id=client_id,
                     full_data_json=json.dumps(data),
-                    hotel_name=form_data.get('hotel_name', ''),
-                    destination=form_data.get('destination', ''),
+                    hotel_name=form_data.get('hotel_name', 'Voyage sans hôtel'),
+                    destination=form_data.get('destination', 'Destination inconnue'),
                     price=int(form_data.get('pack_price', 0)),
-                    status=data.get('status', 'proposed'),
+                    status=status,
                     is_day_trip=form_data.get('is_day_trip', False),
+                    is_ultra_budget=form_data.get('is_ultra_budget', False),
+                    assigned_at=assigned_at,
+                    # Les champs ci-dessous sont spécifiques aux excursions et seront NULL sinon
                     transport_type=form_data.get('transport_type'),
                     bus_departure_address=form_data.get('bus_departure_address'),
                     travel_duration_minutes=calculate_duration_minutes(data),
                     departure_time=form_data.get('departure_time'),
                     return_time=form_data.get('return_time'),
-                    is_ultra_budget=form_data.get('is_ultra_budget', False)
                 )
-                
-                if data.get('status') == 'assigned':
-                    new_trip.assigned_at = datetime.utcnow()
                 
                 db.session.add(new_trip)
                 db.session.commit()
                 
+                # Log de l'activité
+                log_activity(
+                    action='trip_created',
+                    user_id=g.user.id,
+                    agency_id=g.agency.id,
+                    trip_id=new_trip.id,
+                    details=f"Voyage vers {new_trip.destination}"
+                )
+
                 return jsonify({
                     'success': True,
                     'message': 'Voyage enregistré avec succès',
@@ -1245,7 +1408,371 @@ def create_app():
                     'success': False,
                     'message': f'Erreur lors de la sauvegarde: {str(e)}'
                 }), 500
+
+    # NOUVEAU : Route pour mettre à jour un voyage
+    @app.route('/api/trips/<int:trip_id>', methods=['PUT'])
+    @agency_required
+    def api_update_trip(trip_id):
+        """Met à jour un voyage existant."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité : Vérifier l'appartenance et les permissions
+        if trip.agency_id != g.agency.id:
+            abort(403)
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403)
+        if trip.status == 'sold':
+            return jsonify({'success': False, 'message': 'Impossible de modifier un voyage vendu.'}), 403
+
+        data = request.get_json()
+        form_data = data.get('form_data', {})
+
+        try:
+            # Mettre à jour les champs principaux
+            trip.hotel_name = form_data.get('hotel_name', trip.hotel_name)
+            trip.destination = form_data.get('destination', trip.destination)
+            trip.price = int(form_data.get('pack_price', trip.price))
+            trip.is_day_trip = form_data.get('is_day_trip', trip.is_day_trip)
+            
+            # Mettre à jour les champs spécifiques aux excursions
+            trip.transport_type = form_data.get('transport_type', trip.transport_type)
+            trip.bus_departure_address = form_data.get('bus_departure_address', trip.bus_departure_address)
+            trip.travel_duration_minutes = calculate_duration_minutes(data)
+            trip.departure_time = form_data.get('departure_time', trip.departure_time)
+            trip.return_time = form_data.get('return_time', trip.return_time)
+
+            # Mettre à jour le JSON complet
+            # On fusionne les anciennes données avec les nouvelles pour ne rien perdre
+            current_full_data = json.loads(trip.full_data_json)
+            current_full_data['form_data'].update(form_data)
+            trip.full_data_json = json.dumps(current_full_data)
+
+            db.session.commit()
+
+            return jsonify({
+                'success': True,
+                'message': 'Voyage mis à jour avec succès.',
+                'trip': trip.to_dict()
+            })
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Erreur mise à jour voyage: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Erreur lors de la mise à jour: {str(e)}'
+            }), 500
+
+    @app.route('/api/trips/<int:trip_id>/assign', methods=['POST'])
+    @agency_required
+    def api_assign_client(trip_id):
+        """Assigne un client à un voyage existant."""
+        
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Vérifier que le voyage appartient bien à l'agence de l'utilisateur
+        if trip.agency_id != g.user.agency_id:
+            abort(403, "Accès non autorisé à ce voyage.")
+
+        data = request.get_json()
+        client_id = data.get('client_id')
+
+        if not client_id:
+            return jsonify({'success': False, 'message': 'ID du client manquant.'}), 400
+
+        client = Client.query.get(client_id)
+        if not client or client.agency_id != g.user.agency_id:
+            return jsonify({'success': False, 'message': 'Client non trouvé ou invalide.'}), 404
+
+        try:
+            trip.client_id = client.id
+            trip.status = 'assigned'
+            trip.assigned_at = datetime.utcnow()
+            
+            db.session.commit()
+
+            # Log de l'activité
+            log_activity(
+                action='trip_assigned',
+                user_id=g.user.id,
+                agency_id=g.agency.id,
+                trip_id=trip.id,
+                details=f"Assigné à {client.first_name} {client.last_name}"
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': f'Voyage assigné à {client.first_name} {client.last_name}',
+                'trip': trip.to_dict()
+            })
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # NOUVEAU : Route pour marquer un voyage comme vendu
+    @app.route('/api/trips/<int:trip_id>/sell', methods=['POST'])
+    @agency_required
+    def api_sell_trip(trip_id):
+        """Marque un voyage comme vendu."""
+        
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Vérifier que le voyage appartient bien à l'agence de l'utilisateur
+        if trip.agency_id != g.user.agency_id:
+            abort(403, "Accès non autorisé à ce voyage.")
+
+        # Seuls les admins ou le vendeur créateur peuvent marquer comme vendu
+        if g.user.role != 'agency_admin' and trip.user_id != g.user.id:
+            abort(403, "Vous n'avez pas la permission de modifier ce voyage.")
+
+        # Vérifier si une facture existe déjà pour éviter les doublons
+        if Invoice.query.filter_by(trip_id=trip.id).first():
+            return jsonify({'success': False, 'message': 'Une facture existe déjà pour ce voyage.'}), 409
+
+        try:
+            trip.status = 'sold'
+            trip.sold_at = datetime.utcnow()
+            
+            # NOUVEAU : Logique de création de facture
+            new_invoice = Invoice(
+                trip_id=trip.id,
+                # Format simple pour le numéro de facture. On pourra le complexifier plus tard.
+                invoice_number=f"FACTURE-{trip.agency_id}-{trip.id}"
+            )
+            db.session.add(new_invoice)
+            
+            db.session.commit()
+
+            # Log de l'activité
+            log_activity(
+                action='trip_sold',
+                user_id=g.user.id,
+                agency_id=g.agency.id,
+                trip_id=trip.id,
+                details=f"Vendu pour {trip.price}€"
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': 'Voyage marqué comme vendu et facture créée avec succès.',
+                'trip': trip.to_dict()
+            })
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # NOUVEAU : Route pour ajouter une note à un voyage
+    @app.route('/api/trips/<int:trip_id>/notes', methods=['POST'])
+    @agency_required
+    def api_add_trip_note(trip_id):
+        """Ajoute une note interne à un voyage."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité : Vérifier que le voyage appartient bien à l'agence
+        if trip.agency_id != g.agency.id:
+            abort(403)
+        # Sécurité : Vendeur ne peut commenter que ses propres voyages
+        if g.user.role == 'seller' and trip.user_id != g.user.id:
+            abort(403)
+
+        data = request.get_json()
+        content = data.get('content')
+
+        if not content or not content.strip():
+            return jsonify({'success': False, 'message': 'Le contenu de la note ne peut pas être vide.'}), 400
+
+        try:
+            new_note = TripNote(
+                content=content,
+                trip_id=trip.id,
+                user_id=g.user.id
+            )
+            db.session.add(new_note)
+            db.session.commit()
+
+            # Log de l'activité
+            log_activity(
+                action='note_added',
+                user_id=g.user.id,
+                agency_id=g.agency.id,
+                trip_id=trip.id,
+                details=f"Note ajoutée au voyage vers {trip.destination}"
+            )
+            return jsonify({'success': True, 'note': new_note.to_dict()})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # NOUVEAU : Route pour publier une fiche de voyage
+    @app.route('/api/trips/<int:trip_id>/publish', methods=['POST'])
+    @agency_required
+    def api_publish_trip(trip_id):
+        """Publie la fiche de présentation d'un voyage via FTP."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité
+        if trip.agency_id != g.agency.id or (g.user.role == 'seller' and trip.user_id != g.user.id):
+            abort(403)
+
+        # Vérifier si la configuration FTP existe
+        ftp_config = g.agency_config.get('ftp_config')
+        if not ftp_config or not ftp_config.get('host'):
+            return jsonify({'success': False, 'message': 'La configuration FTP est manquante pour cette agence.'}), 400
+
+        try:
+            # 1. Générer le HTML de la fiche
+            from services.template_engine import render_trip_template
+            full_data = json.loads(trip.full_data_json)
+            template_type = 'day_trip' if trip.is_day_trip else 'standard'
+            html_content = render_trip_template(full_data, template_type, g.agency.template_name, g.agency.to_dict())
+
+            # 2. Publier via FTP
+            from services.publication import publish_via_ftp
+            filename = f"voyage-{trip.id}-{trip.destination.lower().replace(' ', '-')}.html"
+            success = publish_via_ftp(html_content, filename, ftp_config)
+
+            if not success:
+                raise Exception("La publication FTP a échoué. Vérifiez les logs du serveur.")
+
+            # 3. Mettre à jour le voyage en BDD
+            trip.is_published = True
+            trip.published_filename = filename
+            db.session.commit()
+
+            # 4. Logger l'activité
+            log_activity('trip_published', g.user.id, g.agency.id, trip.id, f"Fiche publiée : {filename}")
+
+            return jsonify({'success': True, 'message': 'Fiche de voyage publiée avec succès !', 'trip': trip.to_dict()})
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # NOUVEAU : Route pour créer un lien de paiement Stripe
+    @app.route('/api/trips/<int:trip_id>/create-payment-link', methods=['POST'])
+    @agency_required
+    def api_create_payment_link(trip_id):
+        """Crée un lien de paiement Stripe pour un acompte."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité
+        if trip.agency_id != g.agency.id or (g.user.role == 'seller' and trip.user_id != g.user.id):
+            abort(403)
+
+        # Vérifier que le voyage est au moins assigné
+        if trip.status == 'proposed':
+            return jsonify({'success': False, 'message': 'Veuillez assigner un client avant de créer un lien de paiement.'}), 400
+
+        data = request.get_json()
+        amount = data.get('amount')
+
+        if not amount or not isinstance(amount, int) or amount <= 0:
+            return jsonify({'success': False, 'message': 'Veuillez fournir un montant valide pour l\'acompte.'}), 400
+
+        stripe_api_key = g.agency_config.get('stripe_api_key')
+        if not stripe_api_key:
+            return jsonify({'success': False, 'message': 'La clé API Stripe est manquante pour cette agence.'}), 400
+
+        try:
+            from services.payment import create_stripe_payment_link
+            # MODIFIÉ : L'URL de succès pointe maintenant vers une page dédiée
+            success_url = url_for('payment_success', _external=True)
+            
+            payment_link = create_stripe_payment_link(trip.destination, amount * 100, stripe_api_key, success_url)
+
+            # Sauvegarder les informations dans la BDD
+            trip.down_payment_amount = amount
+            trip.stripe_payment_link = payment_link
+            db.session.commit()
+
+            log_activity('payment_link_created', g.user.id, g.agency.id, trip.id, f"Lien de paiement de {amount}€ créé")
+
+            return jsonify({'success': True, 'message': 'Lien de paiement créé avec succès !', 'payment_link': payment_link})
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
     
+    # NOUVEAU : Route pour demander un paiement manuel
+    @app.route('/api/trips/<int:trip_id>/request-manual-payment', methods=['POST'])
+    @agency_required
+    def api_request_manual_payment(trip_id):
+        """Enregistre une demande de paiement manuel pour un acompte."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité
+        if trip.agency_id != g.agency.id or (g.user.role == 'seller' and trip.user_id != g.user.id):
+            abort(403)
+
+        if trip.status == 'proposed':
+            return jsonify({'success': False, 'message': 'Veuillez assigner un client avant de demander un paiement.'}), 400
+
+        data = request.get_json()
+        amount = data.get('amount')
+
+        if not amount or not isinstance(amount, int) or amount <= 0:
+            return jsonify({'success': False, 'message': 'Veuillez fournir un montant valide.'}), 400
+
+        try:
+            trip.down_payment_amount = amount
+            trip.payment_method = 'manual'
+            trip.down_payment_status = 'requested'
+            db.session.commit()
+
+            # MODIFIÉ : Envoyer l'email au client
+            try:
+                from services.mailer import send_manual_payment_email
+                send_manual_payment_email(
+                    app_mail=mail,
+                    agency_mail_config=g.agency_config.get('mail_config', {}),
+                    agency_name=g.agency.name,
+                    email_template=g.agency.manual_payment_email_template,
+                    trip=trip,
+                    client=trip.client,
+                    amount=amount
+                )
+            except Exception as mail_error:
+                # Ne pas bloquer l'utilisateur, mais logger l'erreur
+                print(f"⚠️ Erreur d'envoi d'email pour le voyage {trip.id}: {mail_error}")
+
+            log_activity('manual_payment_requested', g.user.id, g.agency.id, trip.id, f"Acompte de {amount}€ demandé (manuel)")
+
+            return jsonify({'success': True, 'message': 'Demande de paiement manuel enregistrée avec succès.'})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # NOUVEAU : Route pour marquer un paiement manuel comme payé
+    @app.route('/api/trips/<int:trip_id>/mark-as-paid', methods=['POST'])
+    @agency_required
+    def api_mark_as_paid(trip_id):
+        """Marque l'acompte d'un paiement manuel comme payé."""
+        trip = Trip.query.get_or_404(trip_id)
+
+        # Sécurité
+        if trip.agency_id != g.agency.id or (g.user.role == 'seller' and trip.user_id != g.user.id):
+            abort(403)
+
+        if trip.payment_method != 'manual':
+            return jsonify({'success': False, 'message': 'Cette action est réservée aux paiements manuels.'}), 400
+
+        try:
+            trip.down_payment_status = 'paid'
+            db.session.commit()
+
+            log_activity(
+                action='manual_payment_paid',
+                user_id=g.user.id,
+                agency_id=g.agency.id,
+                trip_id=trip.id,
+                details=f"Acompte de {trip.down_payment_amount}€ marqué comme payé"
+            )
+
+            return jsonify({'success': True, 'message': 'Paiement marqué comme payé avec succès.'})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
     # ==============================================================================
     # API AGENCE - CRUD CLIENTS
     # ==============================================================================
@@ -1394,6 +1921,12 @@ def create_app():
         </html>
         """
     
+    # NOUVEAU : Page de confirmation de paiement pour le client
+    @app.route('/payment-success')
+    def payment_success():
+        """Page de confirmation affichée au client après un paiement réussi."""
+        return render_template('payment_success.html')
+
     # ==============================================================================
     # GESTION DES ERREURS
     # ==============================================================================

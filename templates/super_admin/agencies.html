@@ -62,6 +62,12 @@
                         <label class="block text-sm font-medium text-gray-700 mb-2">URL du Logo</label>
                         <input type="url" id="logo_url" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="https://example.com/logo.png">
                     </div>
+
+                    <!-- NOUVEAU : Website URL -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">URL de base pour publication</label>
+                        <input type="url" id="website_url" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="https://www.agence.com/voyages/">
+                    </div>
                 </div>
             </div>
 
@@ -97,6 +103,11 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Téléphone</label>
                         <input type="tel" id="contact_phone" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="+32 123 45 67 89">
+                    </div>
+                    <!-- NOUVEAU : Champ Adresse -->
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Adresse Postale</label>
+                        <textarea id="contact_address" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="123 Rue de l'Exemple, 1000 Bruxelles, Belgique"></textarea>
                     </div>
                 </div>
             </div>
@@ -144,6 +155,70 @@
                         <label class="block text-sm font-medium text-gray-700 mb-2">Stripe API Key</label>
                         <input type="text" id="stripe_api_key" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="sk_test_...">
                     </div>
+                </div>
+            </div>
+
+            <!-- NOUVEAU : FTP Config -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Configuration FTP <span class="text-sm font-normal text-gray-500">(Pour la publication)</span></h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Hôte FTP</label>
+                        <input type="text" id="ftp_host" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="ftp.example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Chemin du dossier</label>
+                        <input type="text" id="ftp_path" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="/public_html/voyages/">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Utilisateur FTP</label>
+                        <input type="text" id="ftp_user" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="user">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe FTP</label>
+                        <input type="password" id="ftp_password" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="••••••••">
+                    </div>
+                </div>
+            </div>
+
+            <!-- NOUVEAU : Mail Config -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Configuration Email (SMTP) <span class="text-sm font-normal text-gray-500">(Optionnel)</span></h3>
+                <p class="text-sm text-gray-600 mb-4">Si non configuré, les emails seront envoyés avec la configuration globale du serveur.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Serveur SMTP</label>
+                        <input type="text" id="mail_server" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="smtp.example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Port</label>
+                        <input type="number" id="mail_port" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="587">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Utilisateur SMTP</label>
+                        <input type="text" id="mail_username" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="user@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe SMTP</label>
+                        <input type="password" id="mail_password" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="••••••••">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Email de l'expéditeur</label>
+                        <input type="email" id="mail_sender" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="noreply@agence.com">
+                    </div>
+                </div>
+            </div>
+
+            <!-- NOUVEAU : Email Template -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Template d'email pour paiement manuel</h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    Utilisez les variables suivantes : <code>{{client_name}}</code>, <code>{{trip_destination}}</code>, <code>{{amount}}</code>, <code>{{agency_name}}</code>.
+                </p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Contenu de l'email</label>
+                    <textarea id="manual_payment_email_template" rows="8" class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm" 
+                              placeholder="Bonjour {{client_name}},\n\nVoici les instructions pour le paiement de l'acompte de {{amount}}€ pour votre voyage à {{trip_destination}}..."></textarea>
                 </div>
             </div>
 
@@ -292,6 +367,9 @@ function editAgency(id) {
     document.getElementById('template_name').value = agency.template_name;
     document.getElementById('contact_email').value = agency.contact_email || '';
     document.getElementById('contact_phone').value = agency.contact_phone || '';
+    document.getElementById('website_url').value = agency.website_url || '';
+    document.getElementById('contact_address').value = agency.contact_address || ''; // NOUVEAU
+    document.getElementById('manual_payment_email_template').value = agency.manual_payment_email_template || '';
     document.getElementById('subscription_tier').value = agency.subscription_tier;
     document.getElementById('monthly_generation_limit').value = agency.monthly_limit;
     
@@ -302,6 +380,18 @@ function editAgency(id) {
     // Vider les champs API (on ne les affiche jamais en clair)
     document.getElementById('google_api_key').value = '';
     document.getElementById('stripe_api_key').value = '';
+    // Vider les champs FTP
+    document.getElementById('ftp_host').value = '';
+    document.getElementById('ftp_path').value = '';
+    document.getElementById('ftp_user').value = '';
+    document.getElementById('ftp_password').value = '';
+    // Vider les champs Mail
+    document.getElementById('mail_server').value = '';
+    document.getElementById('mail_port').value = '';
+    document.getElementById('mail_username').value = '';
+    document.getElementById('mail_password').value = '';
+    document.getElementById('mail_sender').value = '';
+    document.getElementById('manual_payment_email_template').value = '';
     
     document.getElementById('agency-modal').classList.remove('hidden');
 }
@@ -360,6 +450,9 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
         template_name: document.getElementById('template_name').value,
         contact_email: document.getElementById('contact_email').value,
         contact_phone: document.getElementById('contact_phone').value,
+        website_url: document.getElementById('website_url').value,
+        manual_payment_email_template: document.getElementById('manual_payment_email_template').value,
+        contact_address: document.getElementById('contact_address').value, // NOUVEAU
         subscription_tier: document.getElementById('subscription_tier').value,
         monthly_generation_limit: document.getElementById('monthly_generation_limit').value,
     };
@@ -373,8 +466,27 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
     const googleKey = document.getElementById('google_api_key').value.trim();
     const stripeKey = document.getElementById('stripe_api_key').value.trim();
     
+    const ftpConfig = {
+        host: document.getElementById('ftp_host').value.trim(),
+        path: document.getElementById('ftp_path').value.trim(),
+        user: document.getElementById('ftp_user').value.trim(),
+        password: document.getElementById('ftp_password').value.trim()
+    };
+
+    const mailConfig = {
+        server: document.getElementById('mail_server').value.trim(),
+        port: document.getElementById('mail_port').value.trim(),
+        username: document.getElementById('mail_username').value.trim(),
+        password: document.getElementById('mail_password').value.trim(),
+        sender: document.getElementById('mail_sender').value.trim(),
+    };
+
     if (googleKey) data.google_api_key = googleKey;
     if (stripeKey) data.stripe_api_key = stripeKey;
+    // Ajouter la config FTP seulement si l'hôte est renseigné
+    if (ftpConfig.host) data.ftp_config = ftpConfig;
+    // Ajouter la config Mail seulement si le serveur est renseigné
+    if (mailConfig.server) data.mail_config = mailConfig;
     
     try {
         const url = isEdit 

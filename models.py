@@ -36,7 +36,8 @@ class Agency(db.Model):
     # Informations de contact (affichées dans les fiches de voyage)
     contact_email = db.Column(db.String(120))
     contact_phone = db.Column(db.String(50))
-    contact_address = db.Column(db.Text)
+    contact_address = db.Column(db.Text) # NOUVEAU
+    manual_payment_email_template = db.Column(db.Text) # Template pour l'email de paiement manuel
     website_url = db.Column(db.String(255))
     
     # Business & Limites
@@ -54,6 +55,7 @@ class Agency(db.Model):
     users = db.relationship('User', backref='agency', lazy=True, cascade='all, delete-orphan')
     trips = db.relationship('Trip', backref='agency', lazy=True, cascade='all, delete-orphan')
     clients = db.relationship('Client', backref='agency', lazy=True, cascade='all, delete-orphan')
+    activities = db.relationship('ActivityLog', backref='agency', lazy=True, cascade='all, delete-orphan', order_by="ActivityLog.created_at.desc()")
     
     def to_dict(self):
         """Représentation JSON (sans les données sensibles)"""
@@ -66,6 +68,8 @@ class Agency(db.Model):
             'template_name': self.template_name,
             'contact_email': self.contact_email,
             'contact_phone': self.contact_phone,
+            'contact_address': self.contact_address, # NOUVEAU
+            'manual_payment_email_template': self.manual_payment_email_template,
             'is_active': self.is_active,
             'subscription_tier': self.subscription_tier,
             'monthly_limit': self.monthly_generation_limit,
@@ -205,6 +209,14 @@ class Trip(db.Model):
     is_published = db.Column(db.Boolean, default=False)
     published_filename = db.Column(db.String(255))
     is_ultra_budget = db.Column(db.Boolean, nullable=False, default=False)
+    is_day_trip = db.Column(db.Boolean, default=False)
+
+    # Champs spécifiques aux excursions
+    transport_type = db.Column(db.String(50))
+    bus_departure_address = db.Column(db.String(255))
+    travel_duration_minutes = db.Column(db.Integer)
+    departure_time = db.Column(db.String(5)) # HH:MM
+    return_time = db.Column(db.String(5))    # HH:MM
     
     # Page client privée
     client_published_filename = db.Column(db.String(255))
@@ -212,6 +224,8 @@ class Trip(db.Model):
     # Paiement
     stripe_payment_link = db.Column(db.Text)
     down_payment_amount = db.Column(db.Integer)
+    payment_method = db.Column(db.String(50)) # 'stripe' ou 'manual'
+    down_payment_status = db.Column(db.String(50)) # 'requested', 'paid'
     balance_due_date = db.Column(db.Date)
     
     # Documents attachés
@@ -224,6 +238,7 @@ class Trip(db.Model):
     
     # Relations
     invoices = db.relationship('Invoice', backref='trip', lazy=True, cascade="all, delete-orphan")
+    notes = db.relationship('TripNote', backref='trip', lazy=True, cascade="all, delete-orphan", order_by="TripNote.created_at.desc()")
     
     def to_dict(self):
         """Représentation JSON du voyage."""
@@ -296,3 +311,69 @@ class Invoice(db.Model):
     
     def __repr__(self):
         return f'<Invoice {self.invoice_number}>'
+
+
+# ==============================================================================
+# MODÈLE ACTIVITYLOG - Journal d'activités de l'agence
+# ==============================================================================
+
+class ActivityLog(db.Model):
+    """Journal des activités importantes au sein d'une agence."""
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Liaisons
+    agency_id = db.Column(db.Integer, db.ForeignKey('agency.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    trip_id = db.Column(db.Integer, db.ForeignKey('trip.id'), nullable=True, index=True)
+    
+    # Description de l'action
+    action = db.Column(db.String(100), nullable=False, index=True) # Ex: 'trip_created', 'trip_sold'
+    details = db.Column(db.String(255)) # Ex: "Voyage à Paris"
+    
+    # Date de création
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    # Relations
+    user = db.relationship('User', backref='activities')
+    trip = db.relationship('Trip', backref='activities')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_pseudo': self.user.pseudo,
+            'action': self.action,
+            'details': self.details,
+            'trip_id': self.trip_id,
+            'trip_destination': self.trip.destination if self.trip else None,
+            'created_at': self.created_at.strftime('%d/%m/%Y à %H:%M')
+        }
+
+
+# ==============================================================================
+# MODÈLE TRIPNOTE - Notes internes sur un voyage
+# ==============================================================================
+
+class TripNote(db.Model):
+    """Notes internes laissées par les utilisateurs sur un voyage."""
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Contenu de la note
+    content = db.Column(db.Text, nullable=False)
+    
+    # Liaisons
+    trip_id = db.Column(db.Integer, db.ForeignKey('trip.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    
+    # Date de création
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relation pour récupérer l'auteur de la note
+    author = db.relationship('User', backref='notes')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'content': self.content,
+            'author_pseudo': self.author.pseudo,
+            'created_at': self.created_at.strftime('%d/%m/%Y à %H:%M')
+        }

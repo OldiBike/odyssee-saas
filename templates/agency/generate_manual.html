@@ -15,6 +15,7 @@
         h3.section-divider { text-align: center; border-bottom: 1px solid #e5e7eb; line-height: 0.1em; margin: 40px 0 30px; }
         h3.section-divider span { background:#fff; padding:0 15px; color: #6b7280; font-size: 0.9em; text-transform: uppercase; font-weight: 600; }
         .conditional-fields { background: #f9fafb; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1rem; border: 1px solid #e5e7eb; }
+        .hidden { display: none; }
         @media (max-width: 768px) { .form-row { flex-direction: column; gap: 0; } .form-container { padding: 20px; } }
         .pac-container { z-index: 10000 !important; }
     </style>
@@ -116,15 +117,18 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
-<script async src="https://maps.googleapis.com/maps/api/js?key={{ g.agency_config.google_api_key }}&libraries=places&callback=initManualForm"></script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ g.agency_config.google_api_key }}&libraries=places&callback=initManualForm"></script>
 <script>
     function initManualForm() {
+        // Initialisation des autocomplétions Google
         const hotelInput = document.getElementById('hotel_name');
         const destinationInput = document.getElementById('destination');
-        
-        new google.maps.places.Autocomplete(hotelInput, { types: ['establishment'] });
-        new google.maps.places.Autocomplete(destinationInput);
+        if (google && google.maps && google.maps.places) {
+            new google.maps.places.Autocomplete(hotelInput, { types: ['establishment'] });
+            new google.maps.places.Autocomplete(destinationInput);
+        }
 
+        // Initialisation du sélecteur de dates
         const dateRangePicker = new Litepicker({
             element: document.getElementById('date_range'),
             singleMode: false, lang: 'fr-FR', format: 'DD MMMM YYYY',
@@ -163,6 +167,7 @@
         tripTypeRadios.forEach(radio => radio.addEventListener('change', toggleFields));
         transportSelect.addEventListener('change', toggleAutocarFields);
 
+        // Gestion de la soumission du formulaire
         document.getElementById('manual-trip-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -171,8 +176,9 @@
             const originalText = saveBtn.innerHTML;
             
             saveBtn.disabled = true;
-            saveBtn.innerHTML = 'Sauvegarde...';
+            saveBtn.innerHTML = 'Sauvegarde en cours...';
 
+            // Rassembler les données du formulaire
             const formData = {
                 is_day_trip: isDayTrip,
                 destination: document.getElementById('destination').value,
@@ -190,6 +196,7 @@
             };
 
             try {
+                // Envoyer les données à l'API
                 const response = await fetch('/api/trips', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -199,11 +206,12 @@
                 const result = await response.json();
                 if (result.success) {
                     alert('✅ Voyage sauvegardé avec succès !');
-                    window.location.href = '/agency/trips';
+                    window.location.href = '/agency/trips'; // Redirection
                 } else {
-                    alert('❌ Erreur: ' + result.message);
+                    alert('❌ Erreur: ' + (result.message || 'Une erreur inconnue est survenue.'));
                 }
             } catch (error) {
+                console.error('Erreur de soumission:', error);
                 alert('❌ Erreur de connexion au serveur.');
             } finally {
                 saveBtn.disabled = false;
@@ -211,6 +219,7 @@
             }
         });
 
+        // Initialiser l'état des champs dynamiques
         toggleFields();
     }
 </script>
