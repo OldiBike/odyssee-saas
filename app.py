@@ -225,6 +225,12 @@ def create_app():
         Identifie l'agence active selon le sous-domaine.
         Exemple: agence-x.odyssee.com → charge l'agence avec subdomain='agence-x'
         """
+        # Routes qui ne nécessitent pas d'agence
+        public_routes = ['/init', '/login', '/super-admin', '/oauth']
+        
+        # Vérifier si on est sur une route publique
+        is_public_route = any(request.path.startswith(route) for route in public_routes)
+        
         # Extraire le host
         host = request.host.split(':')[0]  # Enlève le port si présent
         
@@ -242,13 +248,16 @@ def create_app():
         # Charger l'agence depuis la base de données
         agency = Agency.query.filter_by(subdomain=subdomain, is_active=True).first()
         
-        # Si aucune agence trouvée et qu'on n'est pas sur une route d'initialisation
-        if not agency and not request.path.startswith('/init'):
-            # En développement, on redirige vers l'initialisation
-            if app.config['DEBUG']:
-                return redirect('/init')
-            else:
-                abort(404, "Agence non trouvée")
+        # Si aucune agence trouvée
+        if not agency:
+            # Si c'est une route publique, on continue sans agence
+            if is_public_route:
+                g.agency = None
+                g.agency_config = {}
+                return
+            
+            # Sinon, rediriger vers login (où le super-admin pourra se connecter)
+            return redirect('/login')
         
         # Stocker l'agence dans le contexte global (accessible partout)
         g.agency = agency
