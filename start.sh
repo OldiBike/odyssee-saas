@@ -10,11 +10,9 @@ mkdir -p instance
 echo "📊 Application des migrations..."
 flask db upgrade
 
-# Si les migrations échouent ou si c'est une nouvelle DB, initialiser avec init-db
-if [ $? -ne 0 ]; then
-    echo "⚠️ Migrations échouées, initialisation de la DB..."
-    flask init-db
-fi
+# Toujours exécuter init-db pour initialiser si nécessaire (il skip si déjà initialisé)
+echo "🔧 Initialisation de la base de données (si nécessaire)..."
+flask init-db
 
 echo "✅ Base de données prête"
 
