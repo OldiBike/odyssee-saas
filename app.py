@@ -20,8 +20,16 @@ from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from dotenv import load_dotenv
-from weasyprint import HTML
 from logging.handlers import RotatingFileHandler
+
+# Import optionnel de WeasyPrint (nécessite des bibliothèques système)
+try:
+    from weasyprint import HTML
+    WEASYPRINT_AVAILABLE = True
+except (ImportError, OSError) as e:
+    logging.warning(f"WeasyPrint non disponible: {e}. La génération de PDF sera désactivée.")
+    HTML = None
+    WEASYPRINT_AVAILABLE = False
 from pydantic import ValidationError
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -1139,6 +1147,10 @@ def create_app():
     @agency_required
     def generate_trip_pdf(trip_id):
         """Génère et retourne le PDF de la fiche de présentation d'un voyage."""
+        if not WEASYPRINT_AVAILABLE:
+            return render_template('error.html', 
+                message="La génération de PDF n'est pas disponible sur ce serveur. Contactez l'administrateur."), 503
+        
         trip = Trip.query.get_or_404(trip_id)
 
         # Sécurité : Vérifier que le voyage appartient bien à l'agence
@@ -1179,6 +1191,10 @@ def create_app():
     @agency_required
     def generate_invoice_pdf(invoice_id):
         """Génère et retourne le PDF d'une facture."""
+        if not WEASYPRINT_AVAILABLE:
+            return render_template('error.html', 
+                message="La génération de PDF n'est pas disponible sur ce serveur. Contactez l'administrateur."), 503
+        
         invoice = Invoice.query.get_or_404(invoice_id)
         trip = invoice.trip
 
@@ -1199,12 +1215,17 @@ def create_app():
             agency=g.agency
         )
 
-        # Générer le PDF et créer la réponse
-        pdf = HTML(string=html_string).write_pdf()
-        response = make_response(pdf)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename={invoice.invoice_number}.pdf'
-        return response
+        try:
+            # Générer le PDF et créer la réponse
+            pdf = HTML(string=html_string).write_pdf()
+            response = make_response(pdf)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = f'inline; filename={invoice.invoice_number}.pdf'
+            return response
+        except Exception as e:
+            app.logger.error(f"Erreur génération PDF facture: {e}", exc_info=True)
+            return render_template('error.html', 
+                message="Erreur lors de la génération du PDF. Veuillez contacter l'administrateur."), 500
     
         # Version corrigée
     @app.route('/agency/generate/manual')
