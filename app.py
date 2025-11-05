@@ -21,6 +21,7 @@ from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
+import click
 
 # Import optionnel de WeasyPrint (nécessite des bibliothèques système)
 try:
@@ -466,6 +467,43 @@ def create_app():
                 app.logger.info(f"   Mot de passe: {app.config['SUPER_ADMIN_PASSWORD']}")
             else:
                 app.logger.info(f"Super-admin existe déjà : {super_admin.username}")
+    
+    @app.cli.command("import-data")
+    @click.argument('sql_file')
+    def import_data_command(sql_file):
+        """Importe des données depuis un fichier SQL."""
+        import sqlite3
+        
+        if not os.path.exists(sql_file):
+            app.logger.error(f"❌ Fichier non trouvé : {sql_file}")
+            return
+        
+        app.logger.info(f"📊 Import des données depuis : {sql_file}")
+        
+        try:
+            # Obtenir le chemin de la base de données
+            db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
+            
+            # Connexion à la base de données
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # Lire et exécuter le fichier SQL
+            with open(sql_file, 'r', encoding='utf-8') as f:
+                sql_script = f.read()
+            
+            # Exécuter le script
+            cursor.executescript(sql_script)
+            conn.commit()
+            conn.close()
+            
+            app.logger.info("✅ Import réussi !")
+            app.logger.info(f"   Base de données : {db_path}")
+            
+        except Exception as e:
+            app.logger.error(f"❌ Erreur lors de l'import : {e}")
+            import traceback
+            traceback.print_exc()
     
     # ==============================================================================
     # ROUTES D'AUTHENTIFICATION
