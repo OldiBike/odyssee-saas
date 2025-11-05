@@ -4131,12 +4131,16 @@ def create_app():
     @app.route('/init')
     def init_setup():
         """Page d'initialisation pour la première installation."""
-        # Vérifier si la DB est déjà initialisée
+        # Vérifier si le super-admin existe (DB initialisée)
         try:
-            if Agency.query.first() is not None:
+            super_admin = User.query.filter_by(role='super_admin').first()
+            if super_admin is not None:
+                app.logger.info(f"✅ Super-admin trouvé : {super_admin.username}, redirection vers /login")
                 return redirect(url_for('login'))
-        except:
-            pass
+            else:
+                app.logger.warning("⚠️ Aucun super-admin trouvé, affichage page d'initialisation")
+        except Exception as e:
+            app.logger.error(f"❌ Erreur lors de la vérification du super-admin: {e}", exc_info=True)
         
         return """
         <html>
