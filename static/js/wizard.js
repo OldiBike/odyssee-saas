@@ -1,4 +1,25 @@
 // ============================================================================
+// CSRF Helper
+// ============================================================================
+
+/**
+ * Fonction globale pour effectuer des requêtes fetch avec le token CSRF.
+ * @param {string} url - L'URL de l'API.
+ * @param {object} options - Les options de la requête fetch.
+ * @returns {Promise<Response>}
+ */
+async function fetchWithCSRF(url, options = {}) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!options.headers) {
+        options.headers = {};
+    }
+    if (csrfToken) {
+        options.headers['X-CSRFToken'] = csrfToken;
+    }
+    return fetch(url, options);
+}
+// ============================================================================
 // WIZARD.JS - Système de Génération de Voyage avec IA Conversationnelle
 // Version: 1.0
 // Date: 14 Octobre 2025
@@ -82,15 +103,13 @@ class TravelWizard {
         const aiMode = document.getElementById('ai-mode');
         const manualMode = document.getElementById('manual-mode');
 
-        tabs.forEach(t => t.classList.remove('active'));
-        document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
-
         if (mode === 'ai') {
+            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelector(`[data-mode="ai"]`).classList.add('active');
             aiMode.style.display = 'block';
             manualMode.style.display = 'none';
         } else {
-            aiMode.style.display = 'none';
-            manualMode.style.display = 'block';
+            this.switchToManualMode();
         }
     }
 
@@ -165,7 +184,8 @@ class TravelWizard {
                 id: 'hotel',
                 title: '🏨 Quel hôtel ?',
                 prefilled: parsedData.hotel_name || '',
-                hint: parsedData.destination ? `L'IA a détecté : ${parsedData.destination}` : ''
+                hint: parsedData.hotel_name ? `✅ L'IA a détecté : ${parsedData.hotel_name}` : 
+                      (parsedData.destination ? `Hôtel à ${parsedData.destination}` : '')
             });
         }
 
@@ -173,7 +193,8 @@ class TravelWizard {
         steps.push({
             id: 'destination',
             title: '📍 Confirmez la destination',
-            prefilled: parsedData.destination || ''
+            prefilled: parsedData.destination || '',
+            hint: parsedData.destination ? '✅ Détecté automatiquement par l\'IA' : ''
         });
 
         // Étape 3 : Lieux d'intérêt
@@ -202,17 +223,27 @@ class TravelWizard {
         if (parsedData.is_day_trip) {
             // Voyage d'un jour
             steps.push(
-                { id: 'schedule', title: '⏰ Horaires', prefilled: {} },
+                { id: 'schedule', title: '🗓️ Date & Horaires', prefilled: {} },
                 { id: 'program', title: '📋 Programme de la journée', prefilled: [] },
-                { id: 'pricing', title: '💰 Prix & Inclus', prefilled: { price: parsedData.price || null } }
+                { id: 'pricing_day_trip', title: '💰 Prix', prefilled: { price: parsedData.price || null } },
+                { id: 'options', title: '✨ Options Finales', prefilled: {} }
             );
         } else {
             // Séjour normal
             steps.push(
-                { id: 'dates', title: '🗓️ Dates du séjour', prefilled: { duration: parsedData.estimated_duration || 3 } },
+                { 
+                    id: 'dates', 
+                    title: '🗓️ Dates du séjour', 
+                    prefilled: { 
+                        duration: parsedData.estimated_duration || 3,
+                        date_start: parsedData.date_start || '',
+                        date_end: parsedData.date_end || ''
+                    } 
+                },
                 { id: 'stars', title: '⭐ Catégorie de l\'hôtel', prefilled: parsedData.stars || 3 },
                 { id: 'meal_plan', title: '🍽️ Formule repas', prefilled: parsedData.meal_plan || 'petit_dejeuner' },
-                { id: 'pricing', title: '💰 Prix & Services', prefilled: { price: parsedData.price || null } }
+                { id: 'pricing_stay', title: '💰 Tarification & Marges', prefilled: { price: parsedData.price || null } },
+                { id: 'options', title: '✨ Options Finales', prefilled: {} }
             );
         }
 
@@ -281,8 +312,12 @@ class TravelWizard {
                 return this.renderStarsStep(step);
             case 'meal_plan':
                 return this.renderMealPlanStep(step);
-            case 'pricing':
-                return this.renderPricingStep(step);
+            case 'pricing_day_trip':
+                return this.renderPricingDayTripStep(step);
+            case 'pricing_stay':
+                return this.renderPricingStayStep(step);
+            case 'options':
+                return this.renderOptionsStep(step);
             case 'summary':
                 return this.renderSummaryStep();
             default:
@@ -394,69 +429,50 @@ class TravelWizard {
         const showAutocarFields = selected === 'autocar';
 
         return `
-            <div class="wizard-step-content">
-                <h2>${step.title}</h2>
-                <p class="hint">Choisissez le moyen de transport</p>
-                
-                <div class="transport-options">
-                    ${transports.map(t => `
-                        <label class="radio-card ${selected === t.value ? 'checked' : ''}">
-                            <input 
-                                type="radio" 
-                                name="transport" 
-                                value="${t.value}"
-                                ${selected === t.value ? 'checked' : ''}
-                            />
-                            <span class="radio-card-content">
-                                <span class="radio-icon">${t.icon}</span>
-                                <span class="radio-label">${t.label.replace(t.icon + ' ', '')}</span>
-                            </span>
-                        </label>
-                    `).join('')}
-                </div>
-                
-                <div id="autocar-fields" class="autocar-fields mt-4" style="display: ${showAutocarFields ? 'block' : 'none'}">
-                    <h3 class="h5">📍 Informations autocar</h3>
-                    
-                    <div class="form-group">
-                        <label for="bus_departure_address">Point de départ</label>
-                        <input 
-                            type="text" 
-                            id="bus_departure_address" 
-                            class="form-control"
-                            placeholder="Ex: Place de la Gare, Bruxelles"
-                            value="${this.wizardData.bus_departure_address || ''}"
-                        />
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Durée estimée du trajet</label>
-                        <div class="duration-input">
-                            <input 
-                                type="number" 
-                                id="travel_hours" 
-                                class="form-control"
-                                min="0" 
-                                max="48" 
-                                value="${this.wizardData.travel_hours || 0}"
-                                style="width: 80px;"
-                            />
-                            <span>heures</span>
-                            <input 
-                                type="number" 
-                                id="travel_minutes" 
-                                class="form-control"
-                                min="0" 
-                                max="59" 
-                                value="${this.wizardData.travel_minutes || 0}"
-                                style="width: 80px;"
-                            />
-                            <span>minutes</span>
-                        </div>
-                    </div>
-                </div>
+    <div class="wizard-step-content">
+        <h2>${step.title}</h2>
+        <p class="hint">Choisissez le moyen de transport principal et renseignez les coûts associés.</p>
+        
+        <div class="transport-options">
+            ${transports.map(t => `
+                <label class="radio-card ${selected === t.value ? 'checked' : ''}">
+                    <input type="radio" name="transport" value="${t.value}" ${selected === t.value ? 'checked' : ''} />
+                    <span class="radio-card-content">
+                        <span class="radio-icon">${t.icon}</span>
+                        <span class="radio-label">${t.label.replace(t.icon + ' ', '')}</span>
+                    </span>
+                </label>
+            `).join('')}
+        </div>
+        
+        <div id="transport-details-container" class="mt-4 space-y-4">
+            <!-- Champs pour Autocar -->
+            <div id="autocar-fields" class="hidden">
+                <div class="form-group"><label for="bus_departure_address">Point de départ de l'autocar</label><input type="text" id="bus_departure_address" class="form-control" placeholder="Ex: Place de la Gare, Bruxelles" value="${this.wizardData.bus_departure_address || ''}"></div>
             </div>
-        `;
+
+            <!-- Champs pour Train -->
+            <div id="train-fields" class="hidden">
+                <div class="form-row"><div class="form-group"><label for="departure_station">Gare de départ</label><input type="text" id="departure_station" class="form-control" placeholder="Saisir une gare..."></div><div class="form-group"><label for="arrival_station">Gare d'arrivée</label><input type="text" id="arrival_station" class="form-control" placeholder="Saisir une gare..."></div></div>
+                <div class="form-group"><label for="train_price">Prix du trajet (€)</label><input type="number" id="train_price" class="form-control cost-input" value="${this.wizardData.train_price || 0}"></div>
+            </div>
+
+            <!-- Champs pour Avion -->
+            <div id="avion-fields" class="hidden">
+                <div class="form-row"><div class="form-group"><label for="departure_airport">Aéroport de départ</label><input type="text" id="departure_airport" class="form-control" placeholder="Saisir un aéroport..."></div><div class="form-group"><label for="arrival_airport">Aéroport d'arrivée</label><input type="text" id="arrival_airport" class="form-control" placeholder="Saisir un aéroport..."></div></div>
+                <div class="form-row"><div class="form-group"><label for="baggage_type">🧳 Bagages</label><select id="baggage_type" class="form-control"><option>Pas de bagages</option><option selected>Bagage cabine (10kg)</option><option>Bagage cabine + 1x 23kg en soute</option></select></div><div class="form-group"><label for="flight_price">Prix du vol (€)</label><input type="number" id="flight_price" class="form-control cost-input" value="${this.wizardData.flight_price || 0}"></div></div>
+            </div>
+
+            <!-- Coûts additionnels (pour séjours) -->
+            ${!this.wizardData.is_day_trip ? `
+            <div class="form-row">
+                <div class="form-group"><label for="transfer_cost">🚐 Coût des Transferts (€)</label><input type="number" id="transfer_cost" class="form-control cost-input" value="${this.wizardData.transfer_cost || 0}"></div>
+                <div class="form-group"><label for="car_rental_cost">🚗 Voiture de location (€)</label><input type="number" id="car_rental_cost" class="form-control cost-input" value="${this.wizardData.car_rental_cost || 0}"></div>
+            </div>
+            ` : ''}
+        </div>
+    </div>
+`;
     }
 
     /**
@@ -538,6 +554,11 @@ class TravelWizard {
                 <h2>${step.title}</h2>
                 <p class="hint">Définissez les horaires de votre excursion</p>
                 
+                <div class="form-group">
+                    <label for="day_trip_date">Date de l'excursion</label>
+                    <input type="text" id="day_trip_date" class="form-control" readonly placeholder="Cliquez pour choisir une date" value="${this.wizardData.date_start || ''}">
+                </div>
+
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-group">
@@ -616,11 +637,14 @@ class TravelWizard {
     renderDatesStep(step) {
         const today = new Date().toISOString().split('T')[0];
         const duration = step.prefilled?.duration || 3;
+        const dateStart = step.prefilled?.date_start || this.wizardData.date_start || '';
+        const dateEnd = step.prefilled?.date_end || this.wizardData.date_end || '';
+        const hasPrefilledDates = dateStart && dateEnd;
 
         return `
             <div class="wizard-step-content">
                 <h2>${step.title}</h2>
-                <p class="hint">Quand souhaitez-vous partir ?</p>
+                <p class="hint">${hasPrefilledDates ? '✅ Dates détectées automatiquement - vous pouvez les modifier' : 'Quand souhaitez-vous partir ?'}</p>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -631,7 +655,7 @@ class TravelWizard {
                                 id="date_start" 
                                 class="form-control"
                                 min="${today}"
-                                value="${this.wizardData.date_start || ''}"
+                                value="${dateStart}"
                             />
                         </div>
                     </div>
@@ -643,7 +667,7 @@ class TravelWizard {
                                 id="date_end" 
                                 class="form-control"
                                 min="${today}"
-                                value="${this.wizardData.date_end || ''}"
+                                value="${dateEnd}"
                             />
                         </div>
                     </div>
@@ -741,52 +765,91 @@ class TravelWizard {
     /**
      * Rendu de l'étape Prix
      */
-    renderPricingStep(step) {
+    renderPricingDayTripStep(step) {
         const price = step.prefilled?.price || '';
-        const isDayTrip = this.wizardData.is_day_trip;
-
         return `
-            <div class="wizard-step-content">
-                <h2>${step.title}</h2>
-                <p class="hint">Indiquez le prix ${isDayTrip ? '' : 'par personne'}</p>
-                
-                <div class="form-group">
-                    <label for="pack_price">Prix du voyage ${isDayTrip ? '' : '(par personne)'}</label>
-                    <div class="price-input">
-                        <input 
-                            type="number" 
-                            id="pack_price" 
-                            class="form-control"
-                            min="0"
-                            step="10"
-                            placeholder="0"
-                            value="${price || ''}"
-                        />
-                        <span class="currency">€</span>
-                    </div>
-                </div>
-                
-                ${!isDayTrip ? `
-                    <div class="form-group">
-                        <label>Services inclus</label>
-                        <div class="services-checkboxes">
-                            <label class="checkbox-inline">
-                                <input type="checkbox" id="service_guide" checked />
-                                Guide francophone
-                            </label>
-                            <label class="checkbox-inline">
-                                <input type="checkbox" id="service_entries" checked />
-                                Entrées monuments
-                            </label>
-                            <label class="checkbox-inline">
-                                <input type="checkbox" id="service_insurance" />
-                                Assurance annulation
-                            </label>
-                        </div>
-                    </div>
-                ` : ''}
+    <div class="wizard-step-content">
+        <h2>${step.title}</h2>
+        <p class="hint">Indiquez le prix final de l'excursion.</p>
+        <div class="form-group">
+            <label for="pack_price">Prix du pack (€)</label>
+            <div class="price-input">
+                <input type="number" id="pack_price" class="form-control cost-input" min="0" step="10" placeholder="0" value="${price || ''}" />
+                <span class="currency">€</span>
             </div>
-        `;
+        </div>
+    </div>
+`;
+    }
+
+    renderPricingStayStep(step) {
+        const price = step.prefilled?.price || '';
+        return `
+    <div class="wizard-step-content">
+        <h2>${step.title}</h2>
+        <p class="hint">Renseignez les coûts pour calculer vos marges.</p>
+        
+        <div class="form-row">
+            <div class="form-group"><label for="hotel_b2b_price">Tarif Hôtel B2B (€)</label><input type="number" id="hotel_b2b_price" class="form-control cost-input" placeholder="ex: 2000" value="${this.wizardData.hotel_b2b_price || ''}"></div>
+            <div class="form-group"><label for="hotel_b2c_price">Tarif Hôtel B2C (€)</label><input type="number" id="hotel_b2c_price" class="form-control cost-input" placeholder="ex: 2800" value="${this.wizardData.hotel_b2c_price || ''}"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label for="surcharge_cost">Surcoût Pension (€)</label><input type="number" id="surcharge_cost" class="form-control cost-input" value="${this.wizardData.surcharge_cost || 0}"></div>
+        </div>
+
+        <h3 class="section-divider"><span>Prix Final</span></h3>
+        <div class="form-group">
+            <label for="pack_price">Prix du pack (€) *</label>
+            <div class="price-input">
+                <input type="number" id="pack_price" required class="form-control cost-input" placeholder="ex: 2400" value="${price || ''}">
+                <span class="currency">€</span>
+            </div>
+        </div>
+
+        <div class="cost-calculator">
+            <div><p>Coût B2B</p><span id="total-b2b-cost" class="cost-value">0 €</span></div>
+            <div><p>Coût B2C</p><span id="total-b2c-cost" class="cost-value">0 €</span></div>
+            <div><p>Écart B2C/B2B</p><span id="b2c-b2b-gap" class="cost-value">0 €</span></div>
+            <div><p>Économie Client</p><span id="client-saving" class="cost-value" style="color: #10b981;">0 €</span></div>
+            <div><p>Marge Finale</p><span id="final-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
+            <div><p>Marge Vendeur</p><span id="seller-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
+            <div><p>Marge Agence</p><span id="vp-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
+        </div>
+    </div>
+`;
+    }
+
+    renderOptionsStep(step) {
+        return `
+    <div class="wizard-step-content">
+        <h2>${step.title}</h2>
+        <p class="hint">Ajoutez des services ou des conditions particulières.</p>
+
+        <div class="form-group">
+            <label for="exclusive_services">Services Exclusifs Inclus</label>
+            <textarea id="exclusive_services" class="form-control" rows="3" placeholder="ex: Accès au lounge VIP de l'aéroport&#10;Une bouteille de champagne en chambre...">${this.wizardData.exclusive_services || ''}</textarea>
+        </div>
+
+        <div class="form-group">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center">
+                    <input type="checkbox" id="has_cancellation" class="h-4 w-4 mr-2" ${this.wizardData.has_cancellation ? 'checked' : ''}>
+                    <label for="has_cancellation" class="mb-0">Annulation gratuite</label>
+                </div>
+                <div id="cancellation_date_wrapper" class="${this.wizardData.has_cancellation ? '' : 'hidden'} flex-grow">
+                    <input type="text" id="cancellation_date" class="form-control" readonly placeholder="Jusqu'au..." value="${this.wizardData.cancellation_date || ''}">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group bg-red-50 border border-red-200 p-3 rounded-lg">
+            <label for="is_ultra_budget" class="flex items-center gap-3 m-0 text-red-700 font-semibold">
+                <input type="checkbox" id="is_ultra_budget" value="true" class="h-5 w-5" ${this.wizardData.is_ultra_budget ? 'checked' : ''}>
+                ⚠️ Marquer comme "Ultra Budget"
+            </label>
+        </div>
+    </div>
+`;
     }
 
     /**
@@ -816,7 +879,7 @@ class TravelWizard {
                 ${data.activities && data.activities.length > 0 ? `
                     <div class="summary-card">
                         <h3>🎯 Lieux d'intérêt</h3>
-                        <ul class="activities-list">
+                        <ul class="summary-list">
                             ${data.activities.map(a => `<li>${this.escapeHtml(a)}</li>`).join('')}
                         </ul>
                     </div>
@@ -826,6 +889,7 @@ class TravelWizard {
                     <h3>${data.is_day_trip ? '⏰ Horaires' : '📅 Dates et durée'}</h3>
                     <ul class="summary-list">
                         ${data.is_day_trip ? `
+                            <li><strong>Date :</strong> ${data.date_start ? new Date(data.date_start).toLocaleDateString('fr-FR') : 'À définir'}</li>
                             <li><strong>Départ :</strong> ${data.departure_time}</li>
                             <li><strong>Retour :</strong> ${data.return_time}</li>
                         ` : `
@@ -838,9 +902,20 @@ class TravelWizard {
                     </ul>
                 </div>
                 
+                ${data.exclusive_services || data.has_cancellation ? `
+                <div class="summary-card">
+                    <h3>✨ Options</h3>
+                    <ul class="summary-list">
+                        ${data.exclusive_services ? `<li><strong>Services exclusifs :</strong><br><pre>${this.escapeHtml(data.exclusive_services)}</pre></li>` : ''}
+                        ${data.has_cancellation ? `<li><strong>Annulation gratuite :</strong> Jusqu'au ${data.cancellation_date || 'N/A'}</li>` : ''}
+                    </ul>
+                </div>
+                ` : ''}
+
                 <div class="summary-card highlight">
                     <h3>💰 Prix</h3>
                     <p class="price-summary">${data.pack_price || 0} € ${!data.is_day_trip ? 'par personne' : ''}</p>
+                    ${!data.is_day_trip ? `<p class="text-sm">Marge finale estimée : ${data.final_margin || 0} €</p>` : ''}
                 </div>
                 
                 <div class="alert alert-info">
@@ -872,11 +947,20 @@ class TravelWizard {
             case 'program':
                 this.initProgramListeners();
                 break;
+            case 'schedule':
+                this.initScheduleListeners();
+                break;
             case 'dates':
                 this.initDatesListeners();
                 break;
             case 'stars':
                 this.initStarsListeners();
+                break;
+            case 'pricing_stay':
+                this.initPricingStayListeners();
+                break;
+            case 'options':
+                this.initOptionsListeners();
                 break;
         }
     }
@@ -891,6 +975,13 @@ class TravelWizard {
 
         if (!input || !resultsContainer) return;
 
+        // Si le champ est pré-rempli, déclencher automatiquement l'autocomplétion
+        if (input.value && input.value.length >= 3) {
+            setTimeout(() => {
+                this.triggerHotelAutocomplete(input.value);
+            }, 500);
+        }
+
         input.addEventListener('keyup', (e) => {
             clearTimeout(debounceTimer);
             const query = e.target.value;
@@ -901,31 +992,9 @@ class TravelWizard {
                 return;
             }
 
-            debounceTimer = setTimeout(async () => {
-                try {
-                    const response = await fetchWithCSRF('/api/google/autocomplete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ input: query })
-                    });
-                    const data = await response.json();
-
-                    if (data.success && data.predictions.length > 0) {
-                        resultsContainer.innerHTML = data.predictions.map(p => `
-                            <div class="autocomplete-item" data-place-id="${p.place_id}" data-description="${this.escapeHtml(p.description)}">
-                                <strong>${this.escapeHtml(p.structured_formatting.main_text)}</strong>
-                                <small>${this.escapeHtml(p.structured_formatting.secondary_text)}</small>
-                            </div>
-                        `).join('');
-                        resultsContainer.style.display = 'block';
-                    } else {
-                        resultsContainer.innerHTML = '';
-                        resultsContainer.style.display = 'none';
-                    }
-                } catch (error) {
-                    console.error('Erreur autocomplétion:', error);
-                }
-            }, 300); // Délai de 300ms pour éviter trop d'appels
+            debounceTimer = setTimeout(() => {
+                this.triggerHotelAutocomplete(query);
+            }, 300);
         });
 
         // Gérer la sélection d'un résultat
@@ -948,6 +1017,64 @@ class TravelWizard {
                 resultsContainer.style.display = 'none';
             }
         });
+    }
+
+    /**
+     * NOUVEAU : Déclenche l'autocomplétion et sélectionne automatiquement le premier résultat
+     */
+    async triggerHotelAutocomplete(query) {
+        const resultsContainer = document.getElementById('hotel-autocomplete-results');
+        const input = document.getElementById('hotel_name');
+        
+        if (!resultsContainer || !input) return;
+
+        try {
+            const response = await fetchWithCSRF('/api/google/autocomplete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ input: query })
+            });
+            const data = await response.json();
+
+            if (data.success && data.predictions.length > 0) {
+                resultsContainer.innerHTML = data.predictions.map(p => `
+                    <div class="autocomplete-item" data-place-id="${p.place_id}" data-description="${this.escapeHtml(p.description)}">
+                        <strong>${this.escapeHtml(p.structured_formatting.main_text)}</strong>
+                        <small>${this.escapeHtml(p.structured_formatting.secondary_text)}</small>
+                    </div>
+                `).join('');
+                resultsContainer.style.display = 'block';
+
+                // Si c'est une autocomplétion automatique (pré-remplissage), sélectionner le premier résultat
+                const firstPrediction = data.predictions[0];
+                const prefilledValue = this.steps[this.currentStep]?.prefilled || '';
+                
+                // Vérifier si le champ contient exactement la valeur pré-remplie (pas de modification utilisateur)
+                if (prefilledValue && input.value === prefilledValue) {
+                    // Sélectionner automatiquement le premier résultat après un court délai
+                    setTimeout(() => {
+                        input.value = firstPrediction.description;
+                        document.getElementById('hotel_place_id').value = firstPrediction.place_id;
+                        resultsContainer.innerHTML = '';
+                        resultsContainer.style.display = 'none';
+                        this.getPlaceDetails(firstPrediction.place_id);
+                        
+                        // Afficher un indicateur visuel
+                        input.style.borderColor = '#10b981';
+                        input.style.borderWidth = '2px';
+                        setTimeout(() => {
+                            input.style.borderColor = '';
+                            input.style.borderWidth = '';
+                        }, 2000);
+                    }, 800);
+                }
+            } else {
+                resultsContainer.innerHTML = '';
+                resultsContainer.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Erreur autocomplétion:', error);
+        }
     }
 
     /**
@@ -995,6 +1122,15 @@ class TravelWizard {
      * Événements de l'étape Transport
      */
     initTransportListeners() {
+        // Autocomplétion
+        initAutocomplete('departure_airport', null, 'airport');
+        initAutocomplete('arrival_airport', null, 'airport');
+        initAutocomplete('departure_station', null, 'train_station');
+        initAutocomplete('arrival_station', null, 'train_station');
+
+        // Mettre à jour les champs affichés
+        this.toggleTransportFields();
+
         // Toggle champs autocar
         document.querySelectorAll('input[name="transport"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
@@ -1004,11 +1140,24 @@ class TravelWizard {
                 cards.forEach(c => c.classList.remove('checked'));
                 e.target.closest('.radio-card').classList.add('checked');
                 
-                if (autocarFields) {
-                    autocarFields.style.display = (e.target.value === 'autocar') ? 'block' : 'none';
-                }
+                this.toggleTransportFields();
             });
         });
+    }
+
+    toggleTransportFields() {
+        const transportType = document.querySelector('input[name="transport"]:checked')?.value;
+        const fields = {
+            'autocar': document.getElementById('autocar-fields'),
+            'train': document.getElementById('train-fields'),
+            'avion': document.getElementById('avion-fields')
+        };
+
+        for (const type in fields) {
+            if (fields[type]) {
+                fields[type].classList.toggle('hidden', type !== transportType);
+            }
+        }
     }
 
     /**
@@ -1035,26 +1184,35 @@ class TravelWizard {
             });
         }
 
-        if (multiDayCheckbox) {
-            multiDayCheckbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    dayTripCheckbox.checked = false;
-                    if (dayTripFields) dayTripFields.style.display = 'none';
-                    document.querySelectorAll('.checkbox-card')[1].classList.add('checked');
-                    document.querySelectorAll('.checkbox-card')[0].classList.remove('checked');
-                } else {
-                    dayTripCheckbox.checked = true;
-                    if (dayTripFields) dayTripFields.style.display = 'block';
-                    document.querySelectorAll('.checkbox-card')[1].classList.remove('checked');
-                    document.querySelectorAll('.checkbox-card')[0].classList.add('checked');
-                }
-            });
-        }
+    if (multiDayCheckbox) {
+        multiDayCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                dayTripCheckbox.checked = false;
+                if (dayTripFields) dayTripFields.style.display = 'none';
+                document.querySelectorAll('.checkbox-card')[1].classList.add('checked');
+                document.querySelectorAll('.checkbox-card')[0].classList.remove('checked');
+            } else {
+                dayTripCheckbox.checked = true;
+                if (dayTripFields) dayTripFields.style.display = 'block';
+                document.querySelectorAll('.checkbox-card')[1].classList.remove('checked');
+                document.querySelectorAll('.checkbox-card')[0].classList.add('checked');
+            }
+        });
     }
+}
 
     /**
-     * Événements de l'étape Programme
+     * Événements de l'étape Type de séjour
      */
+    initScheduleListeners() {
+        new Litepicker({
+            element: document.getElementById('day_trip_date'),
+            singleMode: true,
+            lang: 'fr-FR',
+            format: 'DD MMMM YYYY'
+        });
+    }
+
     initProgramListeners() {
         const generateBtn = document.getElementById('generate-program-btn');
         const regenerateBtn = document.getElementById('regenerate-program-btn');
@@ -1117,6 +1275,51 @@ class TravelWizard {
                 selectedOption.classList.add('selected');
             });
         });
+    }
+
+    initPricingStayListeners() {
+        this.updateCostTotals(); // Initial calculation
+        document.querySelectorAll('.cost-input').forEach(input => {
+            input.addEventListener('input', () => this.updateCostTotals());
+        });
+    }
+
+    updateCostTotals() {
+        const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+        const hotelB2B = getVal('hotel_b2b_price');
+        const hotelB2C = getVal('hotel_b2c_price');
+        const flight = getVal('flight_price');
+        const train = getVal('train_price');
+        const transfer = getVal('transfer_cost');
+        const car = getVal('car_rental_cost');
+        const surcharge = getVal('surcharge_cost');
+        const packPrice = getVal('pack_price');
+
+        const totalB2B = hotelB2B + flight + train + transfer + car + surcharge;
+        const totalB2C = hotelB2C + flight + train + transfer + car + surcharge;
+        const gap = totalB2C - totalB2B;
+        const saving = totalB2C - packPrice;
+        const finalMargin = packPrice - totalB2B;
+        const sellerMargin = Math.round(finalMargin * (window.userMarginPercentage / 100));
+        const vpMargin = finalMargin - sellerMargin;
+
+        document.getElementById('total-b2b-cost').textContent = `${totalB2B.toFixed(0)} €`;
+        document.getElementById('total-b2c-cost').textContent = `${totalB2C.toFixed(0)} €`;
+        document.getElementById('b2c-b2b-gap').textContent = `${gap.toFixed(0)} €`;
+        document.getElementById('client-saving').textContent = `${saving.toFixed(0)} €`;
+        document.getElementById('final-margin').textContent = `${finalMargin.toFixed(0)} €`;
+        document.getElementById('seller-margin').textContent = `${sellerMargin.toFixed(0)} €`;
+        document.getElementById('vp-margin').textContent = `${vpMargin.toFixed(0)} €`;
+
+        // Sauvegarder les marges pour le récap
+        this.wizardData.final_margin = finalMargin;
+    }
+
+    initOptionsListeners() {
+        document.getElementById('has_cancellation').addEventListener('change', (e) => {
+            document.getElementById('cancellation_date_wrapper').classList.toggle('hidden', !e.target.checked);
+        });
+        new Litepicker({ element: document.getElementById('cancellation_date'), singleMode: true, lang: 'fr-FR', format: 'DD MMMM YYYY' });
     }
 
     /**
@@ -1248,10 +1451,17 @@ class TravelWizard {
 
             case 'transport':
                 this.wizardData.transport_type = document.querySelector('input[name="transport"]:checked')?.value;
-                if (this.wizardData.transport_type === 'autocar') {
-                    this.wizardData.bus_departure_address = document.getElementById('bus_departure_address')?.value || '';
-                    this.wizardData.travel_hours = parseInt(document.getElementById('travel_hours')?.value || 0);
-                    this.wizardData.travel_minutes = parseInt(document.getElementById('travel_minutes')?.value || 0);
+                this.wizardData.bus_departure_address = document.getElementById('bus_departure_address')?.value || '';
+                this.wizardData.departure_station = document.getElementById('departure_station')?.value || '';
+                this.wizardData.arrival_station = document.getElementById('arrival_station')?.value || '';
+                this.wizardData.train_price = parseFloat(document.getElementById('train_price')?.value || 0);
+                this.wizardData.departure_airport = document.getElementById('departure_airport')?.value || '';
+                this.wizardData.arrival_airport = document.getElementById('arrival_airport')?.value || '';
+                this.wizardData.baggage_type = document.getElementById('baggage_type')?.value || '';
+                this.wizardData.flight_price = parseFloat(document.getElementById('flight_price')?.value || 0);
+                if (!this.wizardData.is_day_trip) {
+                    this.wizardData.transfer_cost = parseFloat(document.getElementById('transfer_cost')?.value || 0);
+                    this.wizardData.car_rental_cost = parseFloat(document.getElementById('car_rental_cost')?.value || 0);
                 }
                 break;
 
@@ -1264,6 +1474,7 @@ class TravelWizard {
                 break;
 
             case 'schedule':
+                this.wizardData.date_start = document.getElementById('day_trip_date')?.value || '';
                 this.wizardData.departure_time = document.getElementById('departure_time_confirm')?.value || '08:00';
                 this.wizardData.return_time = document.getElementById('return_time_confirm')?.value || '20:00';
                 break;
@@ -1292,15 +1503,22 @@ class TravelWizard {
                 this.wizardData.meal_plan = document.querySelector('input[name="meal_plan"]:checked')?.value || 'petit_dejeuner';
                 break;
 
-            case 'pricing':
+            case 'pricing_day_trip':
                 this.wizardData.pack_price = parseFloat(document.getElementById('pack_price')?.value || 0);
-                if (!this.wizardData.is_day_trip) {
-                    this.wizardData.services = {
-                        guide: document.getElementById('service_guide')?.checked || false,
-                        entries: document.getElementById('service_entries')?.checked || false,
-                        insurance: document.getElementById('service_insurance')?.checked || false
-                    };
-                }
+                break;
+
+            case 'pricing_stay':
+                this.wizardData.hotel_b2b_price = parseFloat(document.getElementById('hotel_b2b_price')?.value || 0);
+                this.wizardData.hotel_b2c_price = parseFloat(document.getElementById('hotel_b2c_price')?.value || 0);
+                this.wizardData.surcharge_cost = parseFloat(document.getElementById('surcharge_cost')?.value || 0);
+                this.wizardData.pack_price = parseFloat(document.getElementById('pack_price')?.value || 0);
+                break;
+
+            case 'options':
+                this.wizardData.exclusive_services = document.getElementById('exclusive_services')?.value || '';
+                this.wizardData.has_cancellation = document.getElementById('has_cancellation')?.checked || false;
+                this.wizardData.cancellation_date = document.getElementById('cancellation_date')?.value || '';
+                this.wizardData.is_ultra_budget = document.getElementById('is_ultra_budget')?.checked || false;
                 break;
         }
 
@@ -1361,7 +1579,8 @@ class TravelWizard {
                 }
                 break;
 
-            case 'pricing':
+            case 'pricing_day_trip':
+            case 'pricing_stay':
                 const price = document.getElementById('pack_price')?.value;
                 if (!price || parseFloat(price) <= 0) {
                     this.showError('Veuillez indiquer un prix valide');
@@ -1395,39 +1614,24 @@ class TravelWizard {
     }
 
     /**
-     * Génère la fiche de voyage finale
+     * Génère la fiche de voyage finale - Redirige vers le formulaire manuel pré-rempli
      */
     async generateTrip() {
-        this.showLoading('🚀 Génération de votre fiche de voyage...');
+        this.showLoading('✨ Préparation du formulaire...');
 
-        // MODIFIÉ : Orchestration complète de la génération
         try {
-            // 1. Obtenir les données enrichies (photos, vidéos, etc.)
-            const previewResponse = await fetchWithCSRF('/api/generate-preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    form_data: this.wizardData
-                })
-            });
-            const previewResult = await previewResponse.json();
-            if (!previewResult.success) throw new Error(previewResult.error);
-
-            // 2. Obtenir le HTML de la fiche de voyage
-            const renderResponse = await fetchWithCSRF('/api/render-html-preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(previewResult)
-            });
-            const htmlPreview = await renderResponse.text();
-
+            // Sauvegarder les données du wizard dans sessionStorage pour les transférer au formulaire manuel
+            sessionStorage.setItem('wizardData', JSON.stringify(this.wizardData));
+            
             this.hideLoading();
-            this.showResults(previewResult, htmlPreview);
+            
+            // Rediriger vers le formulaire manuel qui sera pré-rempli
+            window.location.href = '/agency/generate/manual?from_wizard=true';
 
         } catch (error) {
-            console.error('❌ Erreur génération:', error);
+            console.error('❌ Erreur:', error);
             this.hideLoading();
-            this.showError(`Erreur lors de la génération de la fiche: ${error.message}`);
+            this.showError(`Erreur lors de la préparation: ${error.message}`);
         }
     }
 
@@ -1491,7 +1695,7 @@ class TravelWizard {
                 body: JSON.stringify({
                     form_data: result.form_data,
                     api_data: result.api_data,
-                    status: 'proposed'             // Statut initial
+                    status: 'proposed' // Statut initial
                 })
             });
 

@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}Équipe Commerciale - {{ g.agency.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">👔 Équipe Commerciale</h1>
+            <p class="text-muted">Gestion et suivi de la performance de votre équipe</p>
+        </div>
+    </div>
+
+    <!-- KPIs de l'équipe -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Vendeurs Actifs</h6>
+                            <h2 class="mb-0">{{ stats.total_sellers }}</h2>
+                        </div>
+                        <div class="text-primary" style="font-size: 2rem;">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">CA Équipe (Mois)</h6>
+                            <h2 class="mb-0">{{ stats.total_revenue|default(0) }}€</h2>
+                        </div>
+                        <div class="text-success" style="font-size: 2rem;">
+                            <i class="fas fa-euro-sign"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Ventes (Mois)</h6>
+                            <h2 class="mb-0">{{ stats.total_sales|default(0) }}</h2>
+                        </div>
+                        <div class="text-info" style="font-size: 2rem;">
+                            <i class="fas fa-shopping-cart"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Taux Conversion</h6>
+                            <h2 class="mb-0">{{ stats.conversion_rate|default(0) }}%</h2>
+                        </div>
+                        <div class="text-warning" style="font-size: 2rem;">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onglets -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#tab-leaderboard">
+                <i class="fas fa-trophy"></i> Classement
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-team">
+                <i class="fas fa-users"></i> Équipe
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-objectives">
+                <i class="fas fa-bullseye"></i> Objectifs
+            </a>
+        </li>
+    </ul>
+
+    <!-- Contenu des onglets -->
+    <div class="tab-content">
+        <!-- Onglet Classement -->
+        <div class="tab-pane fade show active" id="tab-leaderboard">
+            <div class="row">
+                <!-- Top 3 Podium -->
+                <div class="col-12 mb-4">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title mb-4">🏆 Top Vendeurs du Mois</h5>
+                            
+                            {% if leaderboard|length >= 3 %}
+                            <div class="row text-center">
+                                <!-- 2ème place -->
+                                <div class="col-md-4 order-md-1 mb-3">
+                                    <div class="p-3 bg-light rounded">
+                                        <div class="mb-2" style="font-size: 3rem;">🥈</div>
+                                        <h5>{{ leaderboard[1].seller.pseudo }}</h5>
+                                        <p class="text-muted mb-1">{{ leaderboard[1].sales }} ventes</p>
+                                        <h4 class="text-success mb-0">{{ leaderboard[1].revenue }}€</h4>
+                                        <small class="text-muted">{{ leaderboard[1].conversion_rate }}% conversion</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- 1ère place -->
+                                <div class="col-md-4 order-md-2 mb-3">
+                                    <div class="p-3 bg-warning bg-opacity-10 rounded border border-warning">
+                                        <div class="mb-2" style="font-size: 4rem;">🥇</div>
+                                        <h4>{{ leaderboard[0].seller.pseudo }}</h4>
+                                        <p class="text-muted mb-1">{{ leaderboard[0].sales }} ventes</p>
+                                        <h3 class="text-success mb-0">{{ leaderboard[0].revenue }}€</h3>
+                                        <small class="text-muted">{{ leaderboard[0].conversion_rate }}% conversion</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- 3ème place -->
+                                <div class="col-md-4 order-md-3 mb-3">
+                                    <div class="p-3 bg-light rounded">
+                                        <div class="mb-2" style="font-size: 3rem;">🥉</div>
+                                        <h5>{{ leaderboard[2].seller.pseudo }}</h5>
+                                        <p class="text-muted mb-1">{{ leaderboard[2].sales }} ventes</p>
+                                        <h4 class="text-success mb-0">{{ leaderboard[2].revenue }}€</h4>
+                                        <small class="text-muted">{{ leaderboard[2].conversion_rate }}% conversion</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-center text-muted">Pas encore de données pour le classement</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Classement complet -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">Classement Complet</h5>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Rang</th>
+                                            <th>Vendeur</th>
+                                            <th>Ventes</th>
+                                            <th>CA Généré</th>
+                                            <th>Taux Conversion</th>
+                                            <th>Commissions</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in leaderboard %}
+                                        <tr>
+                                            <td>
+                                                <strong>
+                                                    {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+                                                </strong>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="avatar-sm bg-primary rounded-circle text-white d-flex align-items-center justify-content-center me-2">
+                                                        {{ item.seller.pseudo[0]|upper }}
+                                                    </div>
+                                                    <div>
+                                                        <strong>{{ item.seller.pseudo }}</strong>
+                                                        <br><small class="text-muted">{{ item.seller.email }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td><strong>{{ item.sales }}</strong></td>
+                                            <td><strong class="text-success">{{ item.revenue }}€</strong></td>
+                                            <td>
+                                                <span class="badge {% if item.conversion_rate >= 50 %}bg-success{% elif item.conversion_rate >= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                                    {{ item.conversion_rate }}%
+                                                </span>
+                                            </td>
+                                            <td><strong class="text-info">{{ item.commission }}€</strong></td>
+                                            <td>
+                                                <a href="{{ url_for('seller_detail', seller_id=item.seller.id) }}" 
+                                                   class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-eye"></i> Voir
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Équipe -->
+        <div class="tab-pane fade" id="tab-team">
+            <div class="row">
+                {% for seller in sellers %}
+                <div class="col-md-4 mb-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="avatar-lg bg-primary rounded-circle text-white d-flex align-items-center justify-content-center me-3" style="width: 60px; height: 60px; font-size: 1.5rem;">
+                                    {{ seller.pseudo[0]|upper }}
+                                </div>
+                                <div>
+                                    <h5 class="mb-0">{{ seller.pseudo }}</h5>
+                                    <small class="text-muted">{{ seller.email }}</small>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small>Objectif mensuel</small>
+                                    <small><strong>{{ seller.sales_target|default(0) }}€</strong></small>
+                                </div>
+                                <div class="progress" style="height: 8px;">
+                                    {% set progress = (seller.current_revenue / seller.sales_target * 100)|int if seller.sales_target else 0 %}
+                                    <div class="progress-bar {% if progress >= 100 %}bg-success{% elif progress >= 70 %}bg-info{% elif progress >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                         style="width: {{ progress }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ seller.current_revenue|default(0) }}€ réalisés ({{ progress }}%)</small>
+                            </div>
+                            
+                            <div class="row text-center mb-3">
+                                <div class="col-6">
+                                    <small class="text-muted">Ventes</small>
+                                    <div><strong>{{ seller.sales_count|default(0) }}</strong></div>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Commission</small>
+                                    <div><strong class="text-info">{{ seller.commission_rate|default(10) }}%</strong></div>
+                                </div>
+                            </div>
+                            
+                            <a href="{{ url_for('seller_detail', seller_id=seller.id) }}" 
+                               class="btn btn-outline-primary btn-sm w-100">
+                                <i class="fas fa-chart-line"></i> Performance
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Onglet Objectifs -->
+        <div class="tab-pane fade" id="tab-objectives">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Gestion des Objectifs</h5>
+                    
+                    <form id="objectives-form">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Vendeur</th>
+                                        <th>Objectif Mensuel (€)</th>
+                                        <th>Taux Commission (%)</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for seller in sellers %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ seller.pseudo }}</strong>
+                                            <br><small class="text-muted">{{ seller.email }}</small>
+                                        </td>
+                                        <td>
+                                            <input type="number" 
+                                                   class="form-control form-control-sm" 
+                                                   value="{{ seller.sales_target|default(0) }}"
+                                                   data-seller-id="{{ seller.id }}"
+                                                   data-field="sales_target"
+                                                   style="width: 150px;">
+                                        </td>
+                                        <td>
+                                            <input type="number" 
+                                                   class="form-control form-control-sm" 
+                                                   value="{{ seller.commission_rate|default(10) }}"
+                                                   data-seller-id="{{ seller.id }}"
+                                                   data-field="commission_rate"
+                                                   min="0" max="100"
+                                                   style="width: 100px;">
+                                        </td>
+                                        <td>
+                                            <button type="button" 
+                                                    class="btn btn-sm btn-success save-objectives"
+                                                    data-seller-id="{{ seller.id }}">
+                                                <i class="fas fa-save"></i> Sauvegarder
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Sauvegarder les objectifs
+    document.querySelectorAll('.save-objectives').forEach(button => {
+        button.addEventListener('click', function() {
+            const sellerId = this.dataset.sellerId;
+            const salesTarget = document.querySelector(`input[data-seller-id="${sellerId}"][data-field="sales_target"]`).value;
+            const commissionRate = document.querySelector(`input[data-seller-id="${sellerId}"][data-field="commission_rate"]`).value;
+            
+            fetch(`/api/sellers/${sellerId}/objectives`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    sales_target: parseInt(salesTarget),
+                    commission_rate: parseInt(commissionRate)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Objectifs sauvegardés avec succès !');
+                    location.reload();
+                } else {
+                    alert('❌ Erreur : ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Erreur:', error);
+                alert('❌ Erreur lors de la sauvegarde');
+            });
+        });
+    });
+});
+</script>
+
+<style>
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+}
+
+.avatar-lg {
+    width: 60px;
+    height: 60px;
+    font-size: 1.5rem;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,924 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client.first_name }} {{ client.last_name }} - CRM - Odyssée{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        transition: transform 0.2s ease;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .timeline-item {
+        position: relative;
+        padding-left: 2rem;
+        padding-bottom: 2rem;
+        border-left: 2px solid #E5E7EB;
+    }
+    .timeline-item:last-child {
+        border-left: 2px solid transparent;
+        padding-bottom: 0;
+    }
+    .timeline-dot {
+        position: absolute;
+        left: -0.5rem;
+        top: 0;
+        width: 1rem;
+        height: 1rem;
+        border-radius: 50%;
+        background-color: #3B82F6;
+        border: 3px solid white;
+    }
+    .client-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-nouveau {
+        background-color: #DBEAFE;
+        color: #1E40AF;
+    }
+    .badge-regulier {
+        background-color: #D1FAE5;
+        color: #065F46;
+    }
+    .badge-vip {
+        background-color: #FEF3C7;
+        color: #92400E;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header avec retour -->
+<div class="mb-6">
+    <a href="{{ url_for('crm_dashboard') }}" class="text-blue-600 hover:text-blue-800 flex items-center">
+        <i class="fas fa-arrow-left mr-2"></i>
+        Retour au CRM
+    </a>
+</div>
+
+<!-- En-tête client -->
+<div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <div class="flex justify-between items-start">
+        <div class="flex items-center">
+            <div class="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-3xl">
+                {{ client.first_name[0] }}{{ client.last_name[0] }}
+            </div>
+            <div class="ml-6">
+                <h1 class="text-3xl font-bold text-gray-900">
+                    {{ client.first_name }} {{ client.last_name }}
+                </h1>
+                <div class="flex items-center mt-2 space-x-4">
+                    <span class="client-badge badge-{{ client.client_type or 'nouveau' }}">
+                        {{ client.client_type or 'nouveau' }}
+                    </span>
+                    <span class="text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-1"></i>
+                        Client depuis le {{ client.created_at.strftime('%d/%m/%Y') }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="flex space-x-3">
+            <button onclick="editClient()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <i class="fas fa-edit mr-2"></i>Modifier
+            </button>
+            <button onclick="composeNewEmail()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                <i class="fas fa-envelope mr-2"></i>Envoyer email
+            </button>
+            <button onclick="addInteraction()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                <i class="fas fa-plus mr-2"></i>Interaction
+            </button>
+            <button onclick="deleteClient()" class="bg-red-100 text-red-600 px-3 py-2 rounded-lg hover:bg-red-200 transition text-sm">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs Client -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+    <div class="stat-card bg-white rounded-xl shadow-md p-6">
+        <p class="text-sm font-medium text-gray-600">Nombre d'achats</p>
+        <p class="text-3xl font-bold text-gray-900 mt-2">{{ client.total_purchases or 0 }}</p>
+    </div>
+    <div class="stat-card bg-white rounded-xl shadow-md p-6">
+        <p class="text-sm font-medium text-gray-600">CA Total</p>
+        <p class="text-3xl font-bold text-green-600 mt-2">{{ client.total_revenue or 0 }}€</p>
+    </div>
+    <div class="stat-card bg-white rounded-xl shadow-md p-6">
+        <p class="text-sm font-medium text-gray-600">Panier moyen</p>
+        <p class="text-3xl font-bold text-blue-600 mt-2">{{ insights.average_trip_value }}€</p>
+    </div>
+    <div class="stat-card bg-white rounded-xl shadow-md p-6">
+        <p class="text-sm font-medium text-gray-600">Dernier achat</p>
+        <p class="text-lg font-bold text-gray-900 mt-2">
+            {{ client.last_purchase_date.strftime('%d/%m/%Y') if client.last_purchase_date else 'Jamais' }}
+        </p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Informations principales -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Coordonnées -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-address-card text-blue-600 mr-2"></i>
+                Coordonnées
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Email</p>
+                    <p class="text-base font-medium text-gray-900">
+                        <i class="fas fa-envelope text-gray-400 mr-2"></i>
+                        {{ client.email or '-' }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Téléphone</p>
+                    <p class="text-base font-medium text-gray-900">
+                        <i class="fas fa-phone text-gray-400 mr-2"></i>
+                        {{ client.phone or '-' }}
+                    </p>
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-sm text-gray-600">Adresse</p>
+                    <p class="text-base font-medium text-gray-900">
+                        <i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>
+                        {{ client.address or '-' }}
+                    </p>
+                </div>
+                {% if client.birthday %}
+                <div>
+                    <p class="text-sm text-gray-600">Date de naissance</p>
+                    <p class="text-base font-medium text-gray-900">
+                        <i class="fas fa-birthday-cake text-gray-400 mr-2"></i>
+                        {{ client.birthday.strftime('%d/%m/%Y') }}
+                    </p>
+                </div>
+                {% endif %}
+                {% if client.source %}
+                <div>
+                    <p class="text-sm text-gray-600">Source</p>
+                    <p class="text-base font-medium text-gray-900">
+                        <i class="fas fa-bullseye text-gray-400 mr-2"></i>
+                        {{ client.source }}
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Messagerie Email -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-900">
+                    <i class="fas fa-envelope text-purple-600 mr-2"></i>
+                    Messagerie (<span id="emailCount">{{ interactions|selectattr('interaction_type', 'equalto', 'email')|list|length }}</span>)
+                </h2>
+                <button onclick="composeNewEmail()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm">
+                    <i class="fas fa-paper-plane mr-2"></i>Nouvel email
+                </button>
+            </div>
+            
+            <!-- Loader de synchronisation -->
+            <div id="emailSyncLoader" class="hidden text-center py-8">
+                <i class="fas fa-sync-alt fa-spin text-purple-600 text-3xl mb-3"></i>
+                <p class="text-gray-600">Synchronisation des emails en cours...</p>
+            </div>
+            
+            <!-- Contenu des emails -->
+            <div id="emailContent">
+            
+            {% set email_list = interactions|selectattr('interaction_type', 'equalto', 'email')|list %}
+            {% if email_list|length > 0 %}
+            <div class="space-y-3">
+                {% for email in email_list %}
+                <div class="border border-gray-200 rounded-lg overflow-hidden email-item" data-email-id="{{ email.id }}">
+                    <!-- En-tête cliquable -->
+                    <div class="p-4 hover:bg-gray-50 transition cursor-pointer email-header" onclick="toggleEmail({{ email.id }})">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-2 mb-2">
+                                    {% if email.is_outbound %}
+                                        <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                            <i class="fas fa-arrow-up mr-1"></i>Envoyé
+                                        </span>
+                                    {% else %}
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                            <i class="fas fa-arrow-down mr-1"></i>Reçu
+                                        </span>
+                                    {% endif %}
+                                    
+                                    {% if email.ai_sentiment %}
+                                        {% if email.ai_sentiment == 'positive' %}
+                                            <span class="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs">
+                                                <i class="fas fa-smile mr-1"></i>Positif
+                                            </span>
+                                        {% elif email.ai_sentiment == 'negative' %}
+                                            <span class="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs">
+                                                <i class="fas fa-frown mr-1"></i>Négatif
+                                            </span>
+                                        {% endif %}
+                                    {% endif %}
+                                    
+                                    <span class="text-xs text-gray-500">
+                                        {{ email.created_at.strftime('%d/%m/%Y à %H:%M') if email.created_at else '' }}
+                                    </span>
+                                    
+                                    <!-- Indicateur de développement -->
+                                    <i class="fas fa-chevron-down text-gray-400 text-xs email-chevron" id="chevron-{{ email.id }}"></i>
+                                </div>
+                                
+                                <h3 class="font-bold text-gray-900 mb-1">{{ email.email_subject or 'Sans sujet' }}</h3>
+                                
+                                {% if email.ai_summary %}
+                                <div class="bg-purple-50 rounded p-2 mt-2 mb-2">
+                                    <div class="flex items-start">
+                                        <i class="fas fa-robot text-purple-600 mr-2 mt-0.5 text-sm"></i>
+                                        <p class="text-sm text-gray-700">{{ email.ai_summary }}</p>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <p class="text-sm text-gray-600 mt-1">
+                                    {% if email.is_outbound %}
+                                        <i class="fas fa-arrow-right text-gray-400 mr-1"></i>À: {{ email.email_to }}
+                                    {% else %}
+                                        <i class="fas fa-arrow-left text-gray-400 mr-1"></i>De: {{ email.email_from }}
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Contenu développable -->
+                    <div class="email-content hidden border-t border-gray-200 bg-gray-50 p-4" id="content-{{ email.id }}">
+                        <div class="bg-white rounded-lg p-4 mb-3">
+                            <div class="prose max-w-none text-sm text-gray-700 whitespace-pre-wrap">{{ email.content or 'Aucun contenu' }}</div>
+                        </div>
+                        
+                        {% if not email.is_outbound %}
+                        <div class="flex justify-end">
+                            <button class="email-reply-btn bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm"
+                                    data-interaction-id="{{ email.id }}"
+                                    data-subject="{{ email.email_subject or 'Sans sujet' }}"
+                                    data-from="{{ email.email_from or '' }}"
+                                    onclick="event.stopPropagation()">
+                                <i class="fas fa-reply mr-2"></i>Répondre
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <i class="fas fa-envelope-open text-gray-400 text-5xl mb-4"></i>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Aucun email pour le moment</h3>
+                <p class="text-gray-600 mb-4">Commencez la conversation en envoyant un email à {{ client.first_name }}</p>
+                <button onclick="composeNewEmail()" class="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition">
+                    <i class="fas fa-paper-plane mr-2"></i>Envoyer le premier email
+                </button>
+            </div>
+            {% endif %}
+            </div>
+        </div>
+
+        <!-- Historique des voyages -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-plane text-blue-600 mr-2"></i>
+                Historique des Voyages ({{ trips|length }})
+            </h2>
+            {% if trips %}
+            <div class="space-y-4">
+                {% for trip in trips %}
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <h3 class="font-bold text-gray-900">{{ trip.destination }}</h3>
+                            <p class="text-sm text-gray-600">{{ trip.hotel_name }}</p>
+                            <div class="flex items-center mt-2 space-x-4 text-xs text-gray-500">
+                                <span>
+                                    <i class="fas fa-calendar mr-1"></i>
+                                    {{ trip.created_at.strftime('%d/%m/%Y') }}
+                                </span>
+                                <span class="px-2 py-1 rounded-full {% if trip.status == 'sold' %}bg-green-100 text-green-800{% elif trip.status == 'assigned' %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ trip.status }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-bold text-gray-900">{{ trip.price }}€</p>
+                            <a href="{{ url_for('trip_detail', trip_id=trip.id) }}" 
+                               class="text-blue-600 hover:text-blue-800 text-sm">
+                                Voir détails <i class="fas fa-arrow-right ml-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <i class="fas fa-plane text-gray-400 text-4xl mb-3"></i>
+                <p class="text-gray-500">Aucun voyage pour ce client</p>
+            </div>
+            {% endif %}
+        </div>
+
+
+        <!-- Timeline des interactions -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-history text-blue-600 mr-2"></i>
+                Historique des Interactions
+            </h2>
+            {% if interactions %}
+            <div class="mt-4">
+                {% for interaction in interactions %}
+                <div class="timeline-item">
+                    <div class="timeline-dot {% if interaction.interaction_type == 'email' %}bg-purple-600{% endif %}"></div>
+                    <div class="bg-gray-50 rounded-lg p-4 {% if interaction.interaction_type == 'email' %}border-l-4 border-purple-500{% endif %}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center space-x-2">
+                                {% if interaction.interaction_type == 'email' %}
+                                    <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
+                                        <i class="fas fa-envelope mr-1"></i>Email
+                                    </span>
+                                    {% if interaction.email_direction %}
+                                        <span class="px-2 py-1 {% if interaction.email_direction == 'received' %}bg-blue-100 text-blue-800{% else %}bg-green-100 text-green-800{% endif %} rounded text-xs">
+                                            {% if interaction.email_direction == 'received' %}
+                                                <i class="fas fa-arrow-down mr-1"></i>Reçu
+                                            {% else %}
+                                                <i class="fas fa-arrow-up mr-1"></i>Envoyé
+                                            {% endif %}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                        {{ interaction.interaction_type }}
+                                    </span>
+                                {% endif %}
+                                {% if interaction.user_pseudo %}
+                                    <span class="text-sm text-gray-600">
+                                        par {{ interaction.user_pseudo }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <span class="text-xs text-gray-500">
+                                {{ interaction.created_at }}
+                            </span>
+                        </div>
+                        
+                        {% if interaction.interaction_type == 'email' %}
+                            <!-- Affichage enrichi pour les emails -->
+                            {% if interaction.email_subject %}
+                                <div class="mb-2">
+                                    <strong class="text-sm text-gray-900">{{ interaction.email_subject }}</strong>
+                                </div>
+                            {% endif %}
+                            
+                            {% if interaction.ai_summary %}
+                                <div class="mb-3 p-3 bg-white rounded border border-purple-200">
+                                    <div class="flex items-start mb-1">
+                                        <i class="fas fa-robot text-purple-600 mr-2 mt-1"></i>
+                                        <div class="flex-1">
+                                            <p class="text-sm text-gray-700">{{ interaction.ai_summary }}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Sentiment et métadonnées -->
+                                    <div class="flex items-center mt-2 space-x-3 text-xs">
+                                        {% if interaction.ai_sentiment %}
+                                            <span class="flex items-center">
+                                                {% if interaction.ai_sentiment == 'positive' %}
+                                                    <i class="fas fa-smile text-green-500 mr-1"></i>
+                                                    <span class="text-green-700">Positif</span>
+                                                {% elif interaction.ai_sentiment == 'negative' %}
+                                                    <i class="fas fa-frown text-red-500 mr-1"></i>
+                                                    <span class="text-red-700">Négatif</span>
+                                                {% else %}
+                                                    <i class="fas fa-meh text-gray-500 mr-1"></i>
+                                                    <span class="text-gray-700">Neutre</span>
+                                                {% endif %}
+                                            </span>
+                                        {% endif %}
+                                        
+                                        {% if interaction.ai_category %}
+                                            <span class="px-2 py-1 bg-purple-50 text-purple-700 rounded">
+                                                {{ interaction.ai_category }}
+                                            </span>
+                                        {% endif %}
+                                        
+                                        {% if interaction.requires_action %}
+                                            <span class="px-2 py-1 bg-orange-100 text-orange-800 rounded font-medium">
+                                                <i class="fas fa-exclamation-circle mr-1"></i>Action requise
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            {% if interaction.content %}
+                                <details class="text-sm text-gray-600">
+                                    <summary class="cursor-pointer hover:text-gray-900">Voir le contenu complet</summary>
+                                    <div class="mt-2 p-3 bg-white rounded border border-gray-200 max-h-48 overflow-y-auto">
+                                        {{ interaction.content }}
+                                    </div>
+                                </details>
+                            {% endif %}
+                        {% else %}
+                            <!-- Affichage standard pour les autres interactions -->
+                            <p class="text-sm text-gray-700">{{ interaction.content }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <i class="fas fa-comments text-gray-400 text-4xl mb-3"></i>
+                <p class="text-gray-500">Aucune interaction enregistrée</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Notes internes -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-sticky-note text-yellow-500 mr-2"></i>
+                Notes internes
+            </h3>
+            <textarea id="clientNotes" rows="6" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ajoutez des notes sur ce client...">{{ client.notes or '' }}</textarea>
+            <button onclick="saveNotes()" class="mt-3 w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                <i class="fas fa-save mr-2"></i>Enregistrer
+            </button>
+        </div>
+
+        <!-- Destinations préférées -->
+        {% if insights.top_destinations %}
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-map-marked-alt text-blue-600 mr-2"></i>
+                Destinations préférées
+            </h3>
+            <ul class="space-y-2">
+                {% for dest in insights.top_destinations %}
+                <li class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">{{ dest.destination }}</span>
+                    <span class="text-sm font-bold text-blue-600">{{ dest.count }}x</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Préférences -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-heart text-red-500 mr-2"></i>
+                Préférences
+            </h3>
+            {% if client.preferences %}
+            <ul class="space-y-2 text-sm text-gray-700">
+                {% for key, value in client.preferences.items() %}
+                <li><strong>{{ key }}:</strong> {{ value }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm text-gray-500 italic">Aucune préférence enregistrée</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de réponse aux emails -->
+<div id="emailReplyModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fas fa-reply text-blue-600 mr-2"></i>
+                Répondre à l'email
+            </h3>
+            <button onclick="closeEmailReplyModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <form id="emailReplyForm">
+                <input type="hidden" id="replyInteractionId" name="interaction_id">
+                
+                <!-- Infos email original -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <p class="text-sm text-gray-600 mb-1"><strong>Sujet:</strong> <span id="replySubject"></span></p>
+                    <p class="text-sm text-gray-600"><strong>De:</strong> <span id="replyFrom"></span></p>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Votre réponse</label>
+                    <textarea id="replyBody" name="body" rows="12" required
+                              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                              placeholder="Écrivez votre réponse..."></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="replyIsHtml" name="is_html" class="mr-2">
+                        <span class="text-sm text-gray-700">Envoyer en format HTML</span>
+                    </label>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeEmailReplyModal()" 
+                            class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        <i class="fas fa-paper-plane mr-2"></i>
+                        Envoyer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour composer un nouvel email -->
+<div id="emailComposeModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fas fa-paper-plane text-blue-600 mr-2"></i>
+                Nouveau message
+            </h3>
+            <button onclick="closeEmailComposeModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <form id="emailComposeForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Destinataire</label>
+                    <input type="email" id="composeTo" name="to" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                           value="{{ client.email }}" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Sujet</label>
+                    <input type="text" id="composeSubject" name="subject" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                           placeholder="Sujet de l'email" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <textarea id="composeBody" name="body" rows="12" required
+                              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                              placeholder="Écrivez votre message..."></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="composeIsHtml" name="is_html" class="mr-2">
+                        <span class="text-sm text-gray-700">Envoyer en format HTML</span>
+                    </label>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeEmailComposeModal()" 
+                            class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        <i class="fas fa-paper-plane mr-2"></i>
+                        Envoyer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour ajouter une interaction -->
+<div id="interactionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-xl font-bold text-gray-900">Ajouter une interaction</h3>
+        </div>
+        <div class="p-6">
+            <form id="interactionForm">
+                <input type="hidden" name="client_id" value="{{ client.id }}">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Type d'interaction</label>
+                    <select name="interaction_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="note">Note</option>
+                        <option value="appel">Appel téléphonique</option>
+                        <option value="email">Email</option>
+                        <option value="meeting">Rendez-vous</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Contenu</label>
+                    <textarea name="content" rows="4" 
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                              placeholder="Décrivez l'interaction..."></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeInteractionModal()" 
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ========== SYNCHRONISATION ASYNCHRONE DES EMAILS ==========
+    
+    // Lancer la synchronisation après le chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if client.email %}
+        var emailSyncEnabled = {{ 'true' if agency.email_sync_enabled else 'false' }};
+        
+        // Ne lancer la sync que si elle est activée ET qu'on ne vient pas d'un rechargement
+        if (emailSyncEnabled && !sessionStorage.getItem('emailSyncJustDone')) {
+            syncEmailsInBackground();
+        }
+        {% endif %}
+    });
+    
+    async function syncEmailsInBackground() {
+        const loader = document.getElementById('emailSyncLoader');
+        const emailContent = document.getElementById('emailContent');
+        const emailCount = document.getElementById('emailCount');
+        
+        try {
+            // Afficher le loader, masquer le contenu actuel
+            loader.classList.remove('hidden');
+            emailContent.style.opacity = '0.5';
+            
+            // Lancer la synchronisation
+            const response = await fetchWithCSRF('/api/email-sync/trigger', {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success && data.stats && data.stats.saved > 0) {
+                // Il y a de nouveaux emails, marquer et recharger
+                sessionStorage.setItem('emailSyncJustDone', 'true');
+                location.reload();
+            } else {
+                // Pas de nouveaux emails ou erreur, masquer le loader
+                loader.classList.add('hidden');
+                emailContent.style.opacity = '1';
+                console.log('Sync terminée:', data.stats || data.error);
+            }
+        } catch (error) {
+            // En cas d'erreur réseau, on continue sans bloquer l'interface
+            loader.classList.add('hidden');
+            emailContent.style.opacity = '1';
+            console.error('Erreur sync emails:', error);
+        }
+    }
+    
+    // ========== GESTION DES INTERACTIONS ==========
+    
+    function addInteraction() {
+        document.getElementById('interactionModal').classList.remove('hidden');
+    }
+
+    function closeInteractionModal() {
+        document.getElementById('interactionModal').classList.add('hidden');
+        document.getElementById('interactionForm').reset();
+    }
+
+    // Submit interaction
+    document.getElementById('interactionForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+        
+        try {
+            const response = await fetchWithCSRF('/api/crm/interactions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showToast('Interaction enregistrée avec succès', 'success');
+                closeInteractionModal();
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast('Erreur lors de l\'enregistrement', 'error');
+            }
+        } catch (error) {
+            showToast('Erreur réseau', 'error');
+        }
+    });
+
+    // Sauvegarder notes
+    async function saveNotes() {
+        const notes = document.getElementById('clientNotes').value;
+        
+        try {
+            const response = await fetchWithCSRF('/api/crm/clients/{{ client.id }}/notes', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ notes })
+            });
+            
+            if (response.ok) {
+                showToast('Notes enregistrées', 'success');
+            } else {
+                showToast('Erreur lors de l\'enregistrement', 'error');
+            }
+        } catch (error) {
+            showToast('Erreur réseau', 'error');
+        }
+    }
+
+    function editClient() {
+        showToast('Fonctionnalité en développement', 'error');
+    }
+
+    // Fonction pour supprimer un client
+    async function deleteClient() {
+        if (!confirm('⚠️ ATTENTION !\n\nÊtes-vous sûr de vouloir supprimer ce client ?\n\nCette action est irréversible et supprimera :\n- La fiche client\n- L\'historique des interactions\n- Les liens avec les voyages (les voyages seront préservés)\n\nConfirmez-vous la suppression ?')) {
+            return;
+        }
+
+        try {
+            const response = await fetchWithCSRF('/api/crm/clients/{{ client.id }}', {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('Client supprimé avec succès', 'success');
+                // Rediriger vers le dashboard CRM après 1.5 secondes
+                setTimeout(() => {
+                    window.location.href = '{{ url_for("crm_dashboard") }}';
+                }, 1500);
+            } else {
+                showToast(data.message || 'Erreur lors de la suppression', 'error');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showToast('Erreur réseau', 'error');
+        }
+    }
+
+    // ========== FONCTION TOGGLE EMAIL ==========
+    
+    function toggleEmail(emailId) {
+        const content = document.getElementById(`content-${emailId}`);
+        const chevron = document.getElementById(`chevron-${emailId}`);
+        
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            chevron.classList.remove('fa-chevron-down');
+            chevron.classList.add('fa-chevron-up');
+        } else {
+            content.classList.add('hidden');
+            chevron.classList.remove('fa-chevron-up');
+            chevron.classList.add('fa-chevron-down');
+        }
+    }
+    
+    // ========== GESTION DES EMAILS ==========
+    
+    // Gérer les clics sur les boutons de réponse
+    document.querySelectorAll('.email-reply-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const interactionId = this.dataset.interactionId;
+            const subject = this.dataset.subject;
+            const from = this.dataset.from;
+            
+            document.getElementById('replyInteractionId').value = interactionId;
+            document.getElementById('replySubject').textContent = subject;
+            document.getElementById('replyFrom').textContent = from;
+            document.getElementById('emailReplyModal').classList.remove('hidden');
+            document.getElementById('replyBody').focus();
+        });
+    });
+
+    // Fermer le modal de réponse
+    function closeEmailReplyModal() {
+        document.getElementById('emailReplyModal').classList.add('hidden');
+        document.getElementById('emailReplyForm').reset();
+    }
+
+    // Composer un nouvel email
+    function composeNewEmail() {
+        document.getElementById('emailComposeModal').classList.remove('hidden');
+        document.getElementById('composeSubject').focus();
+    }
+
+    // Fermer le modal de composition
+    function closeEmailComposeModal() {
+        document.getElementById('emailComposeModal').classList.add('hidden');
+        document.getElementById('emailComposeForm').reset();
+    }
+
+    // Soumettre la réponse
+    document.getElementById('emailReplyForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const interactionId = document.getElementById('replyInteractionId').value;
+        const body = document.getElementById('replyBody').value;
+        const isHtml = document.getElementById('replyIsHtml').checked;
+
+        try {
+            const response = await fetchWithCSRF('/api/email/reply', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    interaction_id: parseInt(interactionId),
+                    body: body,
+                    is_html: isHtml
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast('Email envoyé avec succès', 'success');
+                closeEmailReplyModal();
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast(data.error || 'Erreur lors de l\'envoi', 'error');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showToast('Erreur réseau', 'error');
+        }
+    });
+
+    // Soumettre le nouvel email
+    document.getElementById('emailComposeForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const to = document.getElementById('composeTo').value;
+        const subject = document.getElementById('composeSubject').value;
+        const body = document.getElementById('composeBody').value;
+        const isHtml = document.getElementById('composeIsHtml').checked;
+
+        try {
+            const response = await fetchWithCSRF('/api/email/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    to: to,
+                    subject: subject,
+                    body: body,
+                    is_html: isHtml,
+                    client_id: parseInt('{{ client.id }}')
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast('Email envoyé avec succès', 'success');
+                closeEmailComposeModal();
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast(data.error || 'Erreur lors de l\'envoi', 'error');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showToast('Erreur réseau', 'error');
+        }
+    });
+</script>
+{% endblock %}

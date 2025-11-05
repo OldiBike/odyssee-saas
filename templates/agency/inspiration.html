@@ -1,0 +1,1019 @@
+{% extends "base.html" %}
+
+{% block title %}Inspiration - Odyssée SaaS{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <!-- En-tête -->
+    <div class="mb-8 text-center">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">
+            <i class="fas fa-lightbulb text-yellow-500 mr-3"></i>
+            Trouvez l'inspiration pour votre prochain voyage
+        </h1>
+        <p class="text-lg text-gray-600">
+            Décrivez ce que vous recherchez en langage naturel, notre IA trouvera les meilleures options pour vous
+        </p>
+    </div>
+
+    <!-- Formulaire de recherche -->
+    <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+        <form id="inspiration-form" class="space-y-6">
+            <!-- Mode de recherche -->
+            <div class="flex gap-4 mb-4">
+                <button 
+                    type="button" 
+                    id="mode-natural"
+                    class="flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 bg-blue-600 text-white shadow-md"
+                    onclick="switchMode('natural')"
+                >
+                    <i class="fas fa-comment-dots mr-2"></i>
+                    Langage naturel
+                </button>
+                <button 
+                    type="button" 
+                    id="mode-structured"
+                    class="flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    onclick="switchMode('structured')"
+                >
+                    <i class="fas fa-list-ul mr-2"></i>
+                    Champs structurés
+                </button>
+            </div>
+
+            <!-- Mode langage naturel -->
+            <div id="natural-mode" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-search mr-2"></i>Décrivez votre voyage idéal
+                    </label>
+                    <textarea 
+                        id="search-query" 
+                        rows="4" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        placeholder="Exemple : 4 jours à Rome depuis Paris, hotel avec petit déjeuner, départ entre le 03/10 et le 9/10 pour un budget de 400€ par personne"
+                    ></textarea>
+                    <p class="mt-2 text-sm text-gray-500">
+                        💡 Mentionnez : destination, ville de départ, dates, budget, type d'hébergement, inclusions...
+                    </p>
+                </div>
+            </div>
+
+            <!-- Mode structuré -->
+            <div id="structured-mode" class="hidden space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Destination -->
+                    <div class="relative">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-map-marker-alt text-red-500 mr-2"></i>Destination *
+                        </label>
+                        <input 
+                            type="text" 
+                            id="structured-destination"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Ex: Rome, Paris, Barcelone..."
+                            autocomplete="off"
+                        >
+                        <input type="hidden" id="structured-destination-code">
+                        <div id="destination-suggestions" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
+                    </div>
+
+                    <!-- Ville de départ -->
+                    <div class="relative">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-plane-departure text-blue-500 mr-2"></i>Ville de départ *
+                        </label>
+                        <input 
+                            type="text" 
+                            id="structured-departure-city"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Ex: Paris, Bruxelles, Lyon..."
+                            autocomplete="off"
+                        >
+                        <input type="hidden" id="structured-departure-code">
+                        <div id="departure-suggestions" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
+                    </div>
+
+                    <!-- Durée du séjour -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-calendar-day text-green-500 mr-2"></i>Durée du séjour (jours) *
+                        </label>
+                        <input 
+                            type="number" 
+                            id="structured-duration"
+                            min="1" 
+                            max="30"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Ex: 3, 4, 7..."
+                        >
+                    </div>
+
+                    <!-- Budget par personne -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-euro-sign text-yellow-500 mr-2"></i>Budget par personne (€) *
+                        </label>
+                        <input 
+                            type="number" 
+                            id="structured-budget"
+                            min="0"
+                            step="50"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Ex: 500, 1000..."
+                        >
+                    </div>
+
+                    <!-- Nombre de personnes -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-users text-purple-500 mr-2"></i>Nombre de personnes *
+                        </label>
+                        <input 
+                            type="number" 
+                            id="structured-travelers"
+                            min="1" 
+                            max="20"
+                            value="2"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+
+                    <!-- Type de pension -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-utensils text-orange-500 mr-2"></i>Type de pension
+                        </label>
+                        <select 
+                            id="structured-board-type"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                            <option value="">Tous types</option>
+                            <option value="room_only">Logement seul</option>
+                            <option value="breakfast">Petit déjeuner</option>
+                            <option value="half_board">Demi-pension</option>
+                            <option value="full_board">Pension complète</option>
+                            <option value="all_inclusive">All inclusive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Période de départ -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-calendar-alt text-indigo-500 mr-2"></i>Période de départ
+                    </label>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center cursor-pointer">
+                            <input 
+                                type="radio" 
+                                name="date-type" 
+                                value="flexible" 
+                                checked
+                                class="mr-2"
+                                onchange="toggleDateInputs('flexible')"
+                            >
+                            <span class="text-sm text-gray-700">Dates flexibles</span>
+                        </label>
+                        <label class="flex items-center cursor-pointer">
+                            <input 
+                                type="radio" 
+                                name="date-type" 
+                                value="precise"
+                                class="mr-2"
+                                onchange="toggleDateInputs('precise')"
+                            >
+                            <span class="text-sm text-gray-700">Dates précises</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Dates flexibles -->
+                <div id="flexible-dates" class="space-y-2">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">Date de départ (approximative)</label>
+                        <input 
+                            type="date" 
+                            id="structured-date-start-flexible"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                    <p class="text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        La date de retour sera calculée automatiquement selon la durée du séjour. Recherche dans une fenêtre d'environ ±7 jours.
+                    </p>
+                </div>
+
+                <!-- Dates précises -->
+                <div id="precise-dates" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">Date de départ *</label>
+                        <input 
+                            type="date" 
+                            id="structured-date-start-precise"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">Date de retour *</label>
+                        <input 
+                            type="date" 
+                            id="structured-date-end-precise"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                </div>
+
+                <p class="text-sm text-gray-500">
+                    <i class="fas fa-asterisk text-red-500 text-xs mr-1"></i>
+                    Champs obligatoires
+                </p>
+            </div>
+            
+            <button 
+                type="submit" 
+                id="search-btn"
+                class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-4 px-6 rounded-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+            >
+                <i class="fas fa-magic mr-2"></i>
+                Trouver des options de voyage
+            </button>
+        </form>
+    </div>
+
+    <!-- Zone de chargement -->
+    <div id="loading-state" class="hidden text-center py-12">
+        <div class="inline-block">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
+            <p class="mt-4 text-gray-600 font-medium">Recherche en cours...</p>
+            <p class="mt-2 text-sm text-gray-500">Analyse de votre demande et recherche des meilleures options</p>
+        </div>
+    </div>
+
+    <!-- Zone d'erreur -->
+    <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
+        <div class="flex items-start">
+            <i class="fas fa-exclamation-triangle text-red-600 text-2xl mr-4 mt-1"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-red-900 mb-2">Erreur</h3>
+                <p id="error-message" class="text-red-700"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zone de résultats -->
+    <div id="results-container" class="hidden">
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">
+                <i class="fas fa-star text-yellow-500 mr-2"></i>
+                Voici les meilleures options pour vous
+            </h2>
+            <p class="text-gray-600">Sélectionnez l'option qui vous convient le mieux</p>
+        </div>
+
+        <div id="results-list" class="space-y-6">
+            <!-- Les résultats seront insérés ici dynamiquement -->
+        </div>
+    </div>
+
+    <!-- Message si aucun résultat -->
+    <div id="no-results-state" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <div class="flex items-start">
+            <i class="fas fa-info-circle text-yellow-600 text-2xl mr-4 mt-1"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-yellow-900 mb-2">Aucun résultat trouvé</h3>
+                <p class="text-yellow-700 mb-3">Nous n'avons pas trouvé d'options correspondant exactement à vos critères.</p>
+                <p class="text-sm text-yellow-600">
+                    💡 Essayez de :
+                </p>
+                <ul class="list-disc list-inside text-sm text-yellow-600 mt-2 space-y-1">
+                    <li>Augmenter votre budget</li>
+                    <li>Élargir vos dates de voyage</li>
+                    <li>Choisir une destination alternative</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// État de l'application
+let searchResults = [];
+let currentMode = 'natural'; // 'natural' ou 'structured'
+
+// Éléments DOM
+const form = document.getElementById('inspiration-form');
+const searchQuery = document.getElementById('search-query');
+const searchBtn = document.getElementById('search-btn');
+const loadingState = document.getElementById('loading-state');
+const errorState = document.getElementById('error-state');
+const errorMessage = document.getElementById('error-message');
+const resultsContainer = document.getElementById('results-container');
+const resultsList = document.getElementById('results-list');
+const noResultsState = document.getElementById('no-results-state');
+
+// Fonction pour basculer entre les modes
+function switchMode(mode) {
+    currentMode = mode;
+    
+    const naturalMode = document.getElementById('natural-mode');
+    const structuredMode = document.getElementById('structured-mode');
+    const btnNatural = document.getElementById('mode-natural');
+    const btnStructured = document.getElementById('mode-structured');
+    
+    if (mode === 'natural') {
+        naturalMode.classList.remove('hidden');
+        structuredMode.classList.add('hidden');
+        btnNatural.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+        btnNatural.classList.add('bg-blue-600', 'text-white', 'shadow-md');
+        btnStructured.classList.remove('bg-blue-600', 'text-white', 'shadow-md');
+        btnStructured.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+    } else {
+        naturalMode.classList.add('hidden');
+        structuredMode.classList.remove('hidden');
+        btnStructured.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+        btnStructured.classList.add('bg-blue-600', 'text-white', 'shadow-md');
+        btnNatural.classList.remove('bg-blue-600', 'text-white', 'shadow-md');
+        btnNatural.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+    }
+    
+    // Masquer les erreurs lors du changement de mode
+    hideAllStates();
+}
+
+// Fonction pour basculer entre dates flexibles et précises
+function toggleDateInputs(type) {
+    const flexibleDates = document.getElementById('flexible-dates');
+    const preciseDates = document.getElementById('precise-dates');
+    
+    if (type === 'flexible') {
+        flexibleDates.classList.remove('hidden');
+        preciseDates.classList.add('hidden');
+    } else {
+        flexibleDates.classList.add('hidden');
+        preciseDates.classList.remove('hidden');
+    }
+}
+
+// Fonction pour calculer la date de fin en fonction de la date de début et de la durée
+function updateEndDateFromDuration() {
+    const startDateInput = document.getElementById('structured-date-start-precise');
+    const endDateInput = document.getElementById('structured-date-end-precise');
+    const durationInput = document.getElementById('structured-duration');
+    
+    const startDate = startDateInput.value;
+    const duration = parseInt(durationInput.value);
+    
+    if (startDate && duration && duration > 0) {
+        const start = new Date(startDate);
+        const end = new Date(start);
+        end.setDate(end.getDate() + duration);
+        
+        // Format YYYY-MM-DD pour l'input date
+        const endDateStr = end.toISOString().split('T')[0];
+        endDateInput.value = endDateStr;
+    }
+}
+
+// Fonction pour calculer la durée en fonction des dates de début et de fin
+function updateDurationFromDates() {
+    const startDateInput = document.getElementById('structured-date-start-precise');
+    const endDateInput = document.getElementById('structured-date-end-precise');
+    const durationInput = document.getElementById('structured-duration');
+    
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+    
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        // Calculer la différence en jours
+        const diffTime = end - start;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays > 0) {
+            durationInput.value = diffDays;
+        }
+    }
+}
+
+// Variables pour l'autocomplétion
+let airportSearchTimeout = null;
+let citySearchTimeout = null;
+
+// Fonction pour rechercher des villes (pour la destination)
+async function searchCity(query, inputId, suggestionsId) {
+    // Annuler la recherche précédente
+    if (citySearchTimeout) {
+        clearTimeout(citySearchTimeout);
+    }
+    
+    // Si la requête est trop courte, masquer les suggestions
+    if (query.length < 2) {
+        document.getElementById(suggestionsId).classList.add('hidden');
+        return;
+    }
+    
+    // Attendre 300ms avant de lancer la recherche
+    citySearchTimeout = setTimeout(async () => {
+        try {
+            console.log('🏙️ Recherche ville:', query);
+            
+            const response = await fetchWithCSRF('/api/google/autocomplete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    input: query,
+                    types: '(cities)'  // Recherche de villes uniquement
+                })
+            });
+            
+            console.log('📡 Response status:', response.status);
+            const data = await response.json();
+            console.log('📦 Data received:', data);
+            
+            if (data.success && data.predictions && data.predictions.length > 0) {
+                console.log('✅ Affichage de', data.predictions.length, 'suggestions');
+                displayCitySuggestions(data.predictions, inputId, suggestionsId);
+            } else {
+                console.log('❌ Aucune suggestion à afficher');
+                document.getElementById(suggestionsId).classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('❌ Erreur recherche ville:', error);
+            document.getElementById(suggestionsId).classList.add('hidden');
+        }
+    }, 300);
+}
+
+// Fonction pour afficher les suggestions de villes
+function displayCitySuggestions(predictions, inputId, suggestionsId) {
+    const suggestionsDiv = document.getElementById(suggestionsId);
+    suggestionsDiv.innerHTML = '';
+    
+    predictions.forEach(prediction => {
+        const div = document.createElement('div');
+        div.className = 'px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0';
+        
+        // Extraire le nom de la ville principale (premier terme)
+        const mainText = prediction.structured_formatting?.main_text || prediction.description.split(',')[0];
+        const secondaryText = prediction.structured_formatting?.secondary_text || prediction.description.split(',').slice(1).join(',');
+        
+        div.innerHTML = `
+            <div>
+                <div class="font-semibold text-gray-900">${mainText}</div>
+                <div class="text-sm text-gray-600">${secondaryText}</div>
+            </div>
+        `;
+        
+        div.addEventListener('click', () => {
+            document.getElementById(inputId).value = mainText;
+            suggestionsDiv.classList.add('hidden');
+        });
+        
+        suggestionsDiv.appendChild(div);
+    });
+    
+    suggestionsDiv.classList.remove('hidden');
+}
+
+// Fonction pour rechercher des aéroports (utilise Google Places avec type airport)
+async function searchAirport(query, inputId, suggestionsId, codeId) {
+    // Annuler la recherche précédente
+    if (airportSearchTimeout) {
+        clearTimeout(airportSearchTimeout);
+    }
+    
+    // Si la requête est trop courte, masquer les suggestions
+    if (query.length < 2) {
+        document.getElementById(suggestionsId).classList.add('hidden');
+        return;
+    }
+    
+    // Attendre 300ms avant de lancer la recherche
+    airportSearchTimeout = setTimeout(async () => {
+        try {
+            console.log('✈️ Recherche aéroport:', query);
+            
+            const response = await fetchWithCSRF('/api/google/autocomplete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    input: query,
+                    types: 'airport'  // Recherche d'aéroports uniquement
+                })
+            });
+            
+            console.log('📡 Response status:', response.status);
+            const data = await response.json();
+            console.log('📦 Data received:', data);
+            
+            if (data.success && data.predictions && data.predictions.length > 0) {
+                console.log('✅ Affichage de', data.predictions.length, 'suggestions');
+                displayAirportSuggestions(data.predictions, inputId, suggestionsId, codeId);
+            } else {
+                console.log('❌ Aucune suggestion à afficher');
+                document.getElementById(suggestionsId).classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('❌ Erreur recherche aéroport:', error);
+            document.getElementById(suggestionsId).classList.add('hidden');
+        }
+    }, 300);
+}
+
+// Fonction pour afficher les suggestions d'aéroports (depuis Google Places)
+function displayAirportSuggestions(predictions, inputId, suggestionsId, codeId) {
+    const suggestionsDiv = document.getElementById(suggestionsId);
+    suggestionsDiv.innerHTML = '';
+    
+    predictions.forEach(prediction => {
+        const div = document.createElement('div');
+        div.className = 'px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0';
+        
+        // Extraire le nom de l'aéroport principal
+        const mainText = prediction.structured_formatting?.main_text || prediction.description.split(',')[0];
+        const secondaryText = prediction.structured_formatting?.secondary_text || prediction.description.split(',').slice(1).join(',');
+        
+        div.innerHTML = `
+            <div>
+                <div class="font-semibold text-gray-900">${mainText}</div>
+                <div class="text-sm text-gray-600">${secondaryText}</div>
+            </div>
+        `;
+        
+        div.addEventListener('click', () => {
+            document.getElementById(inputId).value = mainText;
+            // On stocke le place_id pour pouvoir récupérer plus de détails si nécessaire
+            if (codeId) {
+                document.getElementById(codeId).value = prediction.place_id || '';
+            }
+            suggestionsDiv.classList.add('hidden');
+        });
+        
+        suggestionsDiv.appendChild(div);
+    });
+    
+    suggestionsDiv.classList.remove('hidden');
+}
+
+// Initialiser les event listeners pour la synchronisation des dates
+document.addEventListener('DOMContentLoaded', function() {
+    const startDatePrecise = document.getElementById('structured-date-start-precise');
+    const endDatePrecise = document.getElementById('structured-date-end-precise');
+    const durationInput = document.getElementById('structured-duration');
+    
+    // Quand on change la date de début ou la durée, calculer la date de fin
+    startDatePrecise.addEventListener('change', updateEndDateFromDuration);
+    durationInput.addEventListener('input', function() {
+        // Ne mettre à jour que si on est en mode dates précises
+        const dateType = document.querySelector('input[name="date-type"]:checked').value;
+        if (dateType === 'precise') {
+            updateEndDateFromDuration();
+        }
+    });
+    
+    // Quand on change manuellement la date de fin, recalculer la durée
+    endDatePrecise.addEventListener('change', updateDurationFromDates);
+    
+    // Autocomplétion pour la destination (VILLE, pas aéroport)
+    const destinationInput = document.getElementById('structured-destination');
+    destinationInput.addEventListener('input', (e) => {
+        searchCity(e.target.value, 'structured-destination', 'destination-suggestions');
+    });
+    
+    // Autocomplétion pour la ville de départ
+    const departureCityInput = document.getElementById('structured-departure-city');
+    departureCityInput.addEventListener('input', (e) => {
+        searchAirport(e.target.value, 'structured-departure-city', 'departure-suggestions', 'structured-departure-code');
+    });
+    
+    // Fermer les suggestions quand on clique ailleurs
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#structured-destination') && !e.target.closest('#destination-suggestions')) {
+            document.getElementById('destination-suggestions').classList.add('hidden');
+        }
+        if (!e.target.closest('#structured-departure-city') && !e.target.closest('#departure-suggestions')) {
+            document.getElementById('departure-suggestions').classList.add('hidden');
+        }
+    });
+});
+
+// Fonction pour valider les champs structurés
+function validateStructuredFields() {
+    const destination = document.getElementById('structured-destination').value.trim();
+    const departureCity = document.getElementById('structured-departure-city').value.trim();
+    const duration = document.getElementById('structured-duration').value;
+    const budget = document.getElementById('structured-budget').value;
+    const travelers = document.getElementById('structured-travelers').value;
+    
+    if (!destination) {
+        throw new Error('Veuillez saisir une destination');
+    }
+    if (!departureCity) {
+        throw new Error('Veuillez saisir une ville de départ');
+    }
+    if (!duration || duration < 1) {
+        throw new Error('Veuillez saisir une durée de séjour valide');
+    }
+    if (!budget || budget < 0) {
+        throw new Error('Veuillez saisir un budget valide');
+    }
+    if (!travelers || travelers < 1) {
+        throw new Error('Veuillez saisir un nombre de personnes valide');
+    }
+    
+    return true;
+}
+
+// Fonction pour construire la requête à partir des champs structurés
+function buildStructuredQuery() {
+    const destination = document.getElementById('structured-destination').value.trim();
+    const departureCity = document.getElementById('structured-departure-city').value.trim();
+    const duration = document.getElementById('structured-duration').value;
+    const budget = document.getElementById('structured-budget').value;
+    const travelers = document.getElementById('structured-travelers').value;
+    const boardType = document.getElementById('structured-board-type').value;
+    
+    const dateType = document.querySelector('input[name="date-type"]:checked').value;
+    let dateInfo = '';
+    
+    if (dateType === 'flexible') {
+        const startDate = document.getElementById('structured-date-start-flexible').value;
+        if (startDate) {
+            dateInfo = `, départ autour du ${startDate}`;
+        }
+    } else {
+        const startDate = document.getElementById('structured-date-start-precise').value;
+        const endDate = document.getElementById('structured-date-end-precise').value;
+        if (startDate && endDate) {
+            dateInfo = `, du ${startDate} au ${endDate}`;
+        }
+    }
+    
+    const boardTypeText = boardType ? {
+        'room_only': 'logement seul',
+        'breakfast': 'avec petit déjeuner',
+        'half_board': 'en demi-pension',
+        'full_board': 'en pension complète',
+        'all_inclusive': 'en all inclusive'
+    }[boardType] || '' : '';
+    
+    // Construire la requête en langage naturel
+    let query = `${duration} jours à ${destination} depuis ${departureCity}`;
+    if (boardTypeText) {
+        query += `, hotel ${boardTypeText}`;
+    }
+    query += `${dateInfo}`;
+    query += ` pour un budget de ${budget}€ par personne`;
+    if (travelers > 1) {
+        query += ` pour ${travelers} personnes`;
+    }
+    
+    return query;
+}
+
+// Gestionnaire de soumission du formulaire
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    let query = '';
+    
+    try {
+        if (currentMode === 'natural') {
+            query = searchQuery.value.trim();
+            if (!query) {
+                throw new Error('Veuillez décrire votre voyage');
+            }
+        } else {
+            // Mode structuré
+            validateStructuredFields();
+            query = buildStructuredQuery();
+        }
+        
+        // Masquer tous les états
+        hideAllStates();
+        
+        // Afficher le chargement
+        loadingState.classList.remove('hidden');
+        searchBtn.disabled = true;
+        
+        // Appel à l'API d'inspiration
+        const response = await fetchWithCSRF('/api/inspire', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Erreur lors de la recherche');
+        }
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur lors de la recherche');
+        }
+        
+        // Stocker les résultats
+        searchResults = data.options || [];
+        
+        if (searchResults.length === 0) {
+            showNoResults();
+        } else {
+            displayResults(searchResults);
+        }
+        
+    } catch (error) {
+        console.error('Erreur:', error);
+        showError(error.message);
+    } finally {
+        loadingState.classList.add('hidden');
+        searchBtn.disabled = false;
+    }
+});
+
+// Fonction pour masquer tous les états
+function hideAllStates() {
+    loadingState.classList.add('hidden');
+    errorState.classList.add('hidden');
+    resultsContainer.classList.add('hidden');
+    noResultsState.classList.add('hidden');
+}
+
+// Fonction pour afficher une erreur
+function showError(message) {
+    errorMessage.textContent = message;
+    errorState.classList.remove('hidden');
+}
+
+// Fonction pour afficher "aucun résultat"
+function showNoResults() {
+    noResultsState.classList.remove('hidden');
+}
+
+// Fonction pour afficher les résultats
+function displayResults(results) {
+    resultsList.innerHTML = '';
+    
+    results.forEach((option, index) => {
+        const card = createResultCard(option, index);
+        resultsList.appendChild(card);
+    });
+    
+    resultsContainer.classList.remove('hidden');
+}
+
+// Fonction pour créer une carte de résultat
+function createResultCard(option, index) {
+    const div = document.createElement('div');
+    div.className = 'bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-shadow duration-300';
+    
+    const totalPrice = option.total_price || 0;
+    const flightPrice = option.flight?.price || 0;
+    const hotelPrice = option.hotel?.price || 0;
+    
+    div.innerHTML = `
+        <div class="md:flex">
+            <!-- Image -->
+            <div class="md:w-1/3">
+                <img 
+                    src="${option.hotel?.image || 'https://via.placeholder.com/400x300?text=Hotel'}" 
+                    alt="${option.hotel?.name || 'Hotel'}"
+                    class="w-full h-64 md:h-full object-cover"
+                >
+            </div>
+            
+            <!-- Contenu -->
+            <div class="md:w-2/3 p-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-2">
+                            ${option.destination || 'Destination'}
+                        </h3>
+                        <p class="text-gray-600">
+                            <i class="fas fa-calendar mr-2"></i>
+                            ${option.date_debut || 'Date'} au ${option.date_fin || 'Date'}
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-3xl font-bold text-blue-600">
+                            ${totalPrice}€
+                        </div>
+                        <div class="text-sm text-gray-500">par personne</div>
+                    </div>
+                </div>
+                
+                <!-- Hôtel -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-1">
+                                <h4 class="font-semibold text-gray-900">
+                                    <i class="fas fa-hotel text-blue-600 mr-2"></i>
+                                    ${option.hotel?.name || 'Hotel'}
+                                </h4>
+                                ${option.hotel?.rating ? `
+                                    <span class="text-xs font-semibold px-2 py-1 rounded ${
+                                        option.hotel.rating >= 9 ? 'bg-green-100 text-green-800' : 
+                                        option.hotel.rating >= 8 ? 'bg-blue-100 text-blue-800' : 
+                                        'bg-gray-100 text-gray-800'
+                                    }">
+                                        ${option.hotel.rating}/10
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                ${option.hotel?.stars ? '⭐'.repeat(option.hotel.stars) + ' • ' : ''}
+                                ${option.inclusions?.join(', ') || ''}
+                                ${option.hotel?.reviews_count ? ` • ${option.hotel.reviews_count} avis` : ''}
+                            </div>
+                        </div>
+                        <div class="text-right text-sm ml-3">
+                            <div class="font-semibold text-gray-700">${hotelPrice}€</div>
+                            ${option.hotel?.price_per_night ? `<div class="text-xs text-gray-500">${option.hotel.price_per_night}€/nuit</div>` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Highlights -->
+                    ${option.hotel?.highlights?.length ? `
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            <div class="text-xs text-gray-500 mb-2">
+                                <i class="fas fa-star text-yellow-500 mr-1"></i>Points forts
+                            </div>
+                            <div class="flex flex-wrap gap-1">
+                                ${option.hotel.highlights.map(highlight => `
+                                    <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                        ${highlight}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Équipements clés -->
+                    ${option.hotel?.key_amenities?.length ? `
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            <div class="text-xs text-gray-500 mb-2">
+                                <i class="fas fa-check-circle text-green-500 mr-1"></i>Équipements
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                ${option.hotel.key_amenities.map(amenity => `
+                                    <div class="flex items-center text-xs text-gray-700">
+                                        <i class="fas fa-check text-green-600 mr-2"></i>
+                                        <span>${amenity}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Quartier et attractions -->
+                    ${option.hotel?.neighborhood || option.hotel?.nearby_attractions?.length ? `
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            ${option.hotel.neighborhood ? `
+                                <div class="text-xs mb-2">
+                                    <i class="fas fa-map-marker-alt text-red-500 mr-1"></i>
+                                    <span class="text-gray-500">Quartier :</span>
+                                    <strong class="text-gray-900">${option.hotel.neighborhood}</strong>
+                                </div>
+                            ` : ''}
+                            ${option.hotel.nearby_attractions?.length ? `
+                                <div class="text-xs">
+                                    <i class="fas fa-landmark text-purple-500 mr-1"></i>
+                                    <span class="text-gray-500">À proximité :</span>
+                                    <span class="text-gray-700">
+                                        ${option.hotel.nearby_attractions.map(attr => attr.name || attr).join(', ')}
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <!-- Vol -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between cursor-pointer" onclick="toggleFlightDetails(${index})">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-1">
+                                <h4 class="font-semibold text-gray-900 text-base">
+                                    <i class="fas fa-plane text-blue-600 mr-2"></i>
+                                    ${option.flight?.airline || 'Vol'}
+                                </h4>
+                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    ${option.flight?.provider || 'Provider'}
+                                </span>
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                Vol aller-retour inclus
+                                ${option.flight?.stops > 0 ? `<span class="ml-2 text-orange-600">${option.flight.stops} escale(s)</span>` : '<span class="ml-2 text-green-600">Direct</span>'}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="text-right text-sm">
+                                <div class="font-semibold text-gray-700">${flightPrice}€</div>
+                            </div>
+                            <i id="flight-chevron-${index}" class="fas fa-chevron-down text-gray-400 transition-transform"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Détails des itinéraires (masqués par défaut) -->
+                    <div id="flight-details-${index}" class="hidden mt-3 pt-3 border-t border-gray-200">
+                        <h5 class="text-xs font-semibold text-gray-700 mb-3 uppercase">Itinéraires détaillés</h5>
+                        ${option.flight?.segments?.map((segment, idx) => `
+                            <div class="mb-3 ${idx > 0 ? 'pt-3 border-t border-gray-200' : ''}">
+                                <!-- Type de vol (ALLER/RETOUR) -->
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-xs font-bold ${segment.leg_type === 'ALLER' ? 'text-green-700 bg-green-100' : 'text-orange-700 bg-orange-100'} px-2 py-1 rounded">
+                                        ${segment.leg_type || (idx === 0 ? 'ALLER' : 'RETOUR')}
+                                    </span>
+                                </div>
+                                <!-- Détails du vol -->
+                                <div class="flex items-center gap-3">
+                                    <div class="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <i class="fas fa-plane text-blue-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-semibold text-gray-900 mb-1">
+                                            ${segment.airline}
+                                        </div>
+                                        <div class="flex items-center text-sm text-gray-700 gap-2">
+                                            <span class="font-mono font-semibold">${segment.departure_airport}</span>
+                                            <i class="fas fa-arrow-right text-gray-400"></i>
+                                            <span class="font-mono font-semibold">${segment.arrival_airport}</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-right text-sm">
+                                        <div class="font-medium text-gray-700">${segment.departure_time}</div>
+                                        <div class="text-xs text-gray-500">${segment.duration || ''}</div>
+                                        <div class="font-medium text-gray-700">${segment.arrival_time}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('') || '<p class="text-xs text-gray-500">Détails non disponibles</p>'}
+                    </div>
+                </div>
+                
+                <!-- Bouton d'action -->
+                <button 
+                    onclick="useThisTrip(${index})"
+                    class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+                >
+                    <i class="fas fa-check-circle mr-2"></i>
+                    Utiliser ce voyage
+                </button>
+            </div>
+        </div>
+    `;
+    
+    return div;
+}
+
+// Fonction pour basculer l'affichage des détails de vol
+function toggleFlightDetails(index) {
+    const detailsDiv = document.getElementById(`flight-details-${index}`);
+    const chevron = document.getElementById(`flight-chevron-${index}`);
+    
+    if (detailsDiv && chevron) {
+        const isHidden = detailsDiv.classList.contains('hidden');
+        
+        if (isHidden) {
+            detailsDiv.classList.remove('hidden');
+            chevron.classList.add('rotate-180');
+        } else {
+            detailsDiv.classList.add('hidden');
+            chevron.classList.remove('rotate-180');
+        }
+    }
+}
+
+// Fonction pour utiliser une option de voyage
+function useThisTrip(index) {
+    const option = searchResults[index];
+    if (!option) return;
+    
+    // Construire l'URL avec les paramètres pré-remplis
+    const params = new URLSearchParams({
+        prefill: 'true',
+        destination: option.destination || '',
+        hotel_name: option.hotel?.name || '',
+        price: option.total_price || 0,
+        date_debut: option.date_debut || '',
+        date_fin: option.date_fin || '',
+        // Ajouter d'autres paramètres selon les besoins
+    });
+    
+    // Rediriger vers la page de génération
+    window.location.href = `/agency/generate?${params.toString()}`;
+}
+</script>
+{% endblock %}

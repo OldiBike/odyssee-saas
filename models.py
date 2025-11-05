@@ -25,6 +25,7 @@ class Agency(db.Model):
     # Branding & Personnalisation
     logo_url = db.Column(db.String(500))
     primary_color = db.Column(db.String(7), default='#3B82F6')  # Format hex
+    secondary_color = db.Column(db.String(7), default='#2c3e50') # NOUVEAU
     template_name = db.Column(db.String(50), default='classic')  # classic/modern/luxury
     
     # Configurations API (CHIFFRÉES - ne jamais stocker en clair)
@@ -32,6 +33,35 @@ class Agency(db.Model):
     stripe_api_key_encrypted = db.Column(db.Text)
     mail_config_encrypted = db.Column(db.Text)  # JSON chiffré contenant tous les params mail
     ftp_config_encrypted = db.Column(db.Text)   # JSON chiffré pour SFTP/FTP
+    
+    # Configuration Email Sync (OAuth2)
+    email_sync_enabled = db.Column(db.Boolean, default=False)
+    email_provider = db.Column(db.String(20))  # 'gmail' ou 'outlook'
+    email_access_token_encrypted = db.Column(db.Text)  # Token OAuth chiffré
+    email_refresh_token_encrypted = db.Column(db.Text)  # Refresh token chiffré
+    email_token_expiry = db.Column(db.DateTime)
+    email_sync_address = db.Column(db.String(255))  # Adresse email à synchroniser
+    last_email_sync = db.Column(db.DateTime)
+    email_sync_history_id = db.Column(db.String(100))  # Pour Gmail History API
+    
+    # Configuration Email Sync Manuel (SMTP/IMAP)
+    smtp_config_encrypted = db.Column(db.Text)  # Configuration SMTP chiffrée
+    imap_config_encrypted = db.Column(db.Text)  # Configuration IMAP chiffrée
+    email_config_type = db.Column(db.String(20))  # 'oauth' ou 'manual'
+    email_sync_provider = db.Column(db.String(50))  # 'gmail', 'outlook', 'manual'
+    email_sync_email = db.Column(db.String(255))  # Adresse email pour sync manuel
+    email_last_sync_at = db.Column(db.DateTime)  # Dernière synchronisation
+    
+    # Configuration Synchronisation Automatique (Phase 3A)
+    auto_sync_enabled = db.Column(db.Boolean, default=False)
+    sync_frequency = db.Column(db.String(20), default='hourly')  # hourly, daily, manual
+    last_auto_sync_at = db.Column(db.DateTime)
+    auto_sync_errors_count = db.Column(db.Integer, default=0)
+    
+    # Configuration Webhooks Gmail (Phase 3D)
+    gmail_watch_expiration = db.Column(db.DateTime)
+    gmail_history_id = db.Column(db.BigInteger)
+    webhook_secret = db.Column(db.String(255))  # Secret pour validation webhook
     
     # Informations de contact (affichées dans les fiches de voyage)
     contact_email = db.Column(db.String(120))
@@ -56,6 +86,8 @@ class Agency(db.Model):
     trips = db.relationship('Trip', backref='agency', lazy=True, cascade='all, delete-orphan')
     clients = db.relationship('Client', backref='agency', lazy=True, cascade='all, delete-orphan')
     activities = db.relationship('ActivityLog', backref='agency', lazy=True, cascade='all, delete-orphan', order_by="ActivityLog.created_at.desc()")
+    social_campaigns = db.relationship('SocialMediaCampaign', backref='agency')
+    social_templates = db.relationship('SocialMediaTemplate', backref='agency')
     
     def to_dict(self):
         """Représentation JSON (sans les données sensibles)"""
@@ -65,6 +97,7 @@ class Agency(db.Model):
             'subdomain': self.subdomain,
             'logo_url': self.logo_url,
             'primary_color': self.primary_color,
+            'secondary_color': self.secondary_color,
             'template_name': self.template_name,
             'contact_email': self.contact_email,
             'contact_phone': self.contact_phone,
@@ -114,6 +147,12 @@ class User(db.Model):
     last_generation_date = db.Column(db.Date, default=date.today)
     daily_generation_limit = db.Column(db.Integer, default=5)
     
+    # NOUVEAU : Gestion des vendeurs
+    sales_target = db.Column(db.Integer)  # Objectif mensuel en €
+    commission_rate = db.Column(db.Integer, default=10)  # % commission sur les ventes
+    is_team_leader = db.Column(db.Boolean, default=False)
+    team_id = db.Column(db.Integer, db.ForeignKey('sales_teams.id'))
+    
     # Métadonnées
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -121,6 +160,8 @@ class User(db.Model):
     
     # Relations
     trips = db.relationship('Trip', backref='user', lazy=True)
+    interactions = db.relationship('ClientInteraction', foreign_keys='ClientInteraction.user_id', backref='user', lazy=True)
+    read_interactions = db.relationship('ClientInteraction', foreign_keys='ClientInteraction.read_by_user_id', backref='read_by', lazy=True)
     
     def to_dict(self):
         return {
@@ -158,11 +199,22 @@ class Client(db.Model):
     phone = db.Column(db.String(50))
     address = db.Column(db.Text)
     
+    # NOUVEAU : CRM avancé
+    client_type = db.Column(db.String(20), default='nouveau')  # nouveau, regulier, vip
+    total_purchases = db.Column(db.Integer, default=0)  # Nombre d'achats
+    total_revenue = db.Column(db.Integer, default=0)    # CA total généré
+    last_purchase_date = db.Column(db.DateTime)
+    notes = db.Column(db.Text)  # Notes générales sur le client
+    source = db.Column(db.String(50))  # facebook, referral, direct, website, etc.
+    birthday = db.Column(db.Date)
+    preferences = db.Column(db.JSON)  # Destinations préférées, budget, etc.
+    
     # Métadonnées
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relations
     trips = db.relationship('Trip', backref='client', lazy=True)
+    interactions = db.relationship('ClientInteraction', backref='client', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -239,6 +291,7 @@ class Trip(db.Model):
     # Relations
     invoices = db.relationship('Invoice', backref='trip', lazy=True, cascade="all, delete-orphan")
     notes = db.relationship('TripNote', backref='trip', lazy=True, cascade="all, delete-orphan", order_by="TripNote.created_at.desc()")
+    social_campaigns = db.relationship('SocialMediaCampaign', backref='trip', cascade="all, delete-orphan")
     
     def to_dict(self):
         """Représentation JSON du voyage."""
@@ -377,3 +430,205 @@ class TripNote(db.Model):
             'author_pseudo': self.author.pseudo,
             'created_at': self.created_at.strftime('%d/%m/%Y à %H:%M')
         }
+
+# ==============================================================================
+# MODÈLE SOCIAL MEDIA CAMPAIGN - Campagnes pour les réseaux sociaux
+# ==============================================================================
+
+class SocialMediaCampaign(db.Model):
+    """Stores social media campaigns for trips"""
+    __tablename__ = 'social_media_campaigns'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    trip_id = db.Column(db.Integer, db.ForeignKey('trip.id'), nullable=False)
+    agency_id = db.Column(db.Integer, db.ForeignKey('agency.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Campaign details
+    campaign_name = db.Column(db.String(200))
+    platform = db.Column(db.String(50))  # instagram, facebook, multi
+    format = db.Column(db.String(50))  # carousel, story, post
+    status = db.Column(db.String(50), default='draft')  # draft, generated, published
+    
+    # Generated content
+    slides_data = db.Column(db.JSON)  # Array of slide URLs and metadata
+    captions = db.Column(db.JSON)  # Platform-specific captions
+    hashtags = db.Column(db.Text)
+    
+    # Performance tracking
+    published_at = db.Column(db.DateTime)
+    performance_metrics = db.Column(db.JSON)
+
+class SocialMediaTemplate(db.Model):
+    """Agency-specific social media templates"""
+    __tablename__ = 'social_media_templates'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    agency_id = db.Column(db.Integer, db.ForeignKey('agency.id'), nullable=False)
+    name = db.Column(db.String(100))
+    platform = db.Column(db.String(50))
+    
+    # Design settings
+    primary_color = db.Column(db.String(7))  # Hex color
+    secondary_color = db.Column(db.String(7))
+    font_family = db.Column(db.String(100), default='Montserrat')
+    logo_position = db.Column(db.String(20), default='top-right')  # top-left, top-right, bottom-left, bottom-right
+    
+    # Text templates
+    caption_template = db.Column(db.Text)
+    hashtag_template = db.Column(db.Text)
+
+# ==============================================================================
+# MODÈLES CRM & ANALYTICS - Nouveaux modules
+# ==============================================================================
+
+class ClientInteraction(db.Model):
+    """Historique des interactions avec les clients (CRM)"""
+    __tablename__ = 'client_interactions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Liaisons
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    
+    # Type d'interaction
+    interaction_type = db.Column(db.String(50), nullable=False, index=True)  # appel, email, meeting, note
+    
+    # Contenu
+    content = db.Column(db.Text)
+    
+    # Champs spécifiques aux emails (pour interaction_type='email')
+    email_message_id = db.Column(db.String(255), index=True)  # ID unique de l'email
+    email_thread_id = db.Column(db.String(255), index=True)  # ID du thread
+    email_subject = db.Column(db.String(500))
+    email_from = db.Column(db.String(255))
+    email_to = db.Column(db.String(255))
+    email_cc = db.Column(db.Text)
+    is_outbound = db.Column(db.Boolean, default=False)  # True si envoyé par l'agence
+    ai_summary = db.Column(db.Text)  # Résumé généré par IA
+    
+    # Champs pour les notifications (tracking de lecture)
+    is_read = db.Column(db.Boolean, default=False, index=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+    read_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    
+    # Métadonnées
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    
+    def to_dict(self):
+        result = {
+            'id': self.id,
+            'client_id': self.client_id,
+            'user_id': self.user_id,
+            'user_pseudo': self.user.pseudo if self.user else 'N/A',
+            'interaction_type': self.interaction_type,
+            'content': self.content,
+            'created_at': self.created_at.strftime('%d/%m/%Y à %H:%M')
+        }
+        
+        # Ajouter les champs email si présents
+        if self.interaction_type == 'email':
+            result.update({
+                'email_message_id': self.email_message_id,
+                'email_thread_id': self.email_thread_id,
+                'email_subject': self.email_subject,
+                'email_from': self.email_from,
+                'email_to': self.email_to,
+                'email_cc': self.email_cc,
+                'is_outbound': self.is_outbound,
+                'ai_summary': self.ai_summary
+            })
+        
+        return result
+    
+    def __repr__(self):
+        return f'<ClientInteraction {self.id}: {self.interaction_type}>'
+
+
+class SalesReport(db.Model):
+    """Rapports de ventes générés"""
+    __tablename__ = 'sales_reports'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Liaisons
+    agency_id = db.Column(db.Integer, db.ForeignKey('agency.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)  # Null = rapport global
+    
+    # Configuration du rapport
+    report_type = db.Column(db.String(50), nullable=False)  # daily, weekly, monthly, yearly, custom
+    period_start = db.Column(db.Date, nullable=False, index=True)
+    period_end = db.Column(db.Date, nullable=False, index=True)
+    
+    # Métriques principales
+    total_sales = db.Column(db.Integer, default=0)  # Nombre de ventes
+    total_revenue = db.Column(db.Integer, default=0)  # CA total
+    average_sale = db.Column(db.Integer, default=0)  # Panier moyen
+    trip_count = db.Column(db.Integer, default=0)  # Nombre de voyages créés
+    
+    # Données détaillées (JSON)
+    detailed_data = db.Column(db.JSON)  # Stats par vendeur, destinations, etc.
+    
+    # Métadonnées
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relations
+    agency = db.relationship('Agency', backref='sales_reports')
+    user = db.relationship('User', backref='sales_reports')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'agency_id': self.agency_id,
+            'user_id': self.user_id,
+            'user_pseudo': self.user.pseudo if self.user else 'Global',
+            'report_type': self.report_type,
+            'period_start': self.period_start.strftime('%d/%m/%Y'),
+            'period_end': self.period_end.strftime('%d/%m/%Y'),
+            'total_sales': self.total_sales,
+            'total_revenue': self.total_revenue,
+            'average_sale': self.average_sale,
+            'trip_count': self.trip_count,
+            'generated_at': self.generated_at.strftime('%d/%m/%Y à %H:%M')
+        }
+    
+    def __repr__(self):
+        return f'<SalesReport {self.id}: {self.report_type} - {self.period_start} to {self.period_end}>'
+
+
+class SalesTeam(db.Model):
+    """Équipes commerciales"""
+    __tablename__ = 'sales_teams'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Liaison
+    agency_id = db.Column(db.Integer, db.ForeignKey('agency.id'), nullable=False, index=True)
+    
+    # Informations de l'équipe
+    name = db.Column(db.String(100), nullable=False)
+    leader_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    
+    # Métadonnées
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relations
+    agency = db.relationship('Agency', backref='sales_teams')
+    leader = db.relationship('User', foreign_keys=[leader_id], backref='led_team')
+    members = db.relationship('User', foreign_keys='User.team_id', backref='team')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'agency_id': self.agency_id,
+            'name': self.name,
+            'leader_id': self.leader_id,
+            'leader_name': self.leader.pseudo if self.leader else None,
+            'member_count': len(self.members),
+            'created_at': self.created_at.strftime('%d/%m/%Y')
+        }
+    
+    def __repr__(self):
+        return f'<SalesTeam {self.name}>'

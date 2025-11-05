@@ -1,31 +1,99 @@
 {% extends "base.html" %}
 
 {% block title %}Création Manuelle - {{ g.agency.name }}{% endblock %}
+{% from 'macros/_pagination.html' import render_pagination %}
 
 {% block extra_css %}
-    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css"/>
     <style>
-        .form-container { padding: 40px; }
-        .form-group { margin-bottom: 25px; width: 100%; }
-        label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
-        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-        .form-row { display: flex; gap: 20px; }
-        .save-btn { background: #3B82F6; color: white; border: none; padding: 15px 40px; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; width: 100%; }
-        h3.section-divider { text-align: center; border-bottom: 1px solid #e5e7eb; line-height: 0.1em; margin: 40px 0 30px; }
-        h3.section-divider span { background:#fff; padding:0 15px; color: #6b7280; font-size: 0.9em; text-transform: uppercase; font-weight: 600; }
+        /* Styles pour le formulaire manuel */
+        .form-container { padding: 2rem; }
+        .form-group { margin-bottom: 1.5rem; width: 100%; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
+        input, select, textarea { 
+            width: 100%; 
+            padding: 0.75rem; 
+            border: 1px solid #d1d5db; 
+            border-radius: 0.375rem; 
+            font-size: 1rem; 
+            box-sizing: border-box; 
+            transition: border-color 0.2s;
+        }
+        input[type="checkbox"], input[type="radio"] { width: auto; }
+        input:focus, select:focus, textarea:focus { 
+            outline: none; 
+            border-color: var(--primary-color, #3B82F6); 
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); 
+        }
+        .form-row { display: flex; gap: 1.5rem; }
+        .save-btn { 
+            background: var(--primary-color, #3B82F6); 
+            color: white; 
+            border: none; 
+            padding: 0.875rem 2.5rem; 
+            border-radius: 0.5rem; 
+            font-size: 1.125rem; 
+            font-weight: 600; 
+            cursor: pointer; 
+            width: 100%; 
+            transition: opacity 0.2s;
+        }
+        .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        h3.section-divider { text-align: center; border-bottom: 1px solid #e5e7eb; line-height: 0.1em; margin: 2.5rem 0 2rem; }
+        h3.section-divider span { background: #fff; padding: 0 1rem; color: #6b7280; font-size: 0.875rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; }
         .conditional-fields { background: #f9fafb; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1rem; border: 1px solid #e5e7eb; }
-        .hidden { display: none; }
-        @media (max-width: 768px) { .form-row { flex-direction: column; gap: 0; } .form-container { padding: 20px; } }
-        .pac-container { z-index: 10000 !important; }
+        .hidden { display: none; }        
+        .cost-calculator { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; background-color: #f8fafc; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; }
+        .cost-calculator div { text-align: center; }
+        .cost-calculator p { margin: 0; color: #4b5563; font-weight: 500; font-size: 0.75rem; }
+        .cost-calculator .cost-value { font-size: 1.25rem; font-weight: bold; color: #1e293b; }
+        .autocomplete-results { position: absolute; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; z-index: 1000; width: 100%; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 0.375rem; }
+        .autocomplete-item { padding: 0.75rem; cursor: pointer; border-bottom: 1px solid #eee; }
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover { background-color: #f3f4f6; }
+        @media (max-width: 768px) { .form-row { flex-direction: column; gap: 0; } .form-container { padding: 1.5rem; } .cost-calculator { grid-template-columns: repeat(2, 1fr); } }
+
+        /* Styles pour la génération en 2 étapes */
+        .loading {display: none; text-align: center; padding: 30px;}
+        .loading-spinner {border: 4px solid #f3f3f3; border-top: 4px solid var(--primary-color, #3B82F6); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px;}
+        @keyframes spin {0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);}}
+        .result {display: none; padding: 30px; background: #f8f9fa; border-top: 1px solid #e1e5e9;}
+        .success {color: #28a745; font-size: 1.25rem; font-weight: 600; text-align: center; margin-bottom: 1.5rem;}
+        .error {color: #dc3545; font-size: 1.25rem; font-weight: 600;}
+        .button-container {margin-top: 20px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; align-items: center;}
+        .action-btn, .download-btn, .view-btn, .edit-btn, .html-code-btn, .reset-btn {color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; text-decoration: none; cursor: pointer; transition: opacity 0.2s;}
+        .download-btn {background: #28a745;}
+        .view-btn {background: var(--primary-color, #3B82F6);}
+        .edit-btn {background: #ffc107; color: #333;}
+        .html-code-btn {background: #6c757d;}
+        .reset-btn { background: #9ca3af; padding: 8px 12px; font-size: 20px; line-height: 1; }
+        .stats {display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 20px;}
+        .stat-item {background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05);}
+        .stat-number {font-size: 24px; font-weight: bold; color: var(--primary-color, #3B82F6);}
+        .stat-label {color: #666; font-size: 14px;}
+        .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+        .modal.is-open { display: flex; }
+        .modal-content { background-color: #fefefe; margin: auto; padding: 2rem; border-radius: 0.75rem; max-width: 90%; width: 700px; max-height: 90vh; overflow-y: auto; position: relative; }
+        .close-button { color: #aaa; position: absolute; top: 1rem; right: 1.5rem; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .html-textarea { width: 100%; height: 400px; border: 1px solid #ccc; padding: 10px; font-family: monospace; white-space: pre; overflow: auto; resize: vertical; border-radius: 5px; }
+
+        /* Style pour la recherche de client */
+        #client-search-results { max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-top: none; border-radius: 0 0 0.375rem 0.375rem; }
+        .client-result-item { cursor: pointer; padding: 0.75rem; }
+        .client-result-item:hover { background-color: #f3f4f6; }
+        .client-result-item.selected { background-color: #DBEAFE; color: #1E40AF; }
+
+        .video-edit-form { margin-top: 20px; display: flex; gap: 10px; align-items: center; padding: 15px; background-color: #e9ecef; border-radius: 10px;}
+
+        #voyageForm.hidden { display: none; }
+
     </style>
 {% endblock %}
 
 {% block content %}
 <div class="bg-white rounded-2xl shadow-lg overflow-hidden max-w-4xl mx-auto">
     <div class="form-container">
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex justify-between items-start mb-8">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 mb-2">
                     <i class="fas fa-file-alt text-blue-600 mr-2"></i>
@@ -38,89 +106,494 @@
             </a>
         </div>
 
-        <form id="manual-trip-form">
+        <form id="voyageForm">
 
-            <h3 class="section-divider"><span>Informations Générales</span></h3>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="destination">📍 Destination *</label>
-                    <input type="text" id="destination" class="form-control" required placeholder="Saisir une destination...">
-                </div>
-            </div>
+            <h3 class="section-divider"><span>Type de Voyage</span></h3>
             <div class="form-group">
-                <label>📅 Type de Voyage</label>
                 <div class="flex space-x-4 mt-2">
-                    <label class="flex items-center"><input type="radio" name="trip_type" value="sejour" checked class="mr-2"> Séjour avec hébergement</label>
-                    <label class="flex items-center"><input type="radio" name="trip_type" value="day_trip" class="mr-2"> Excursion d'un jour</label>
+                    <label class="flex items-center p-3 border rounded-lg has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500 cursor-pointer"><input type="radio" name="trip_type" value="sejour" checked class="mr-3 h-4 w-4 text-blue-600"> 🏨 Séjour avec hébergement</label>
+                    <label class="flex items-center p-3 border rounded-lg has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500 cursor-pointer"><input type="radio" name="trip_type" value="day_trip" class="mr-3 h-4 w-4 text-blue-600"> 🌅 Excursion d'un jour</label>
                 </div>
             </div>
 
             <div id="sejour-fields">
-                <h3 class="section-divider"><span>🏨 Hébergement & Dates</span></h3>
+                <h3 class="section-divider"><span>🏨 Détails du Séjour</span></h3>
                 <div class="form-row">
-                    <div class="form-group"><label for="hotel_name">Nom de l'hôtel</label><input type="text" id="hotel_name" placeholder="Saisir un nom d'hôtel..."></div>
+                    <div class="form-group"><label for="hotel_name">Nom de l'hôtel</label><input type="text" id="hotel_name" name="hotel_name" placeholder="Saisir un nom d'hôtel..."></div>
+                    <div class="form-group"><label for="destination">📍 Destination</label><input type="text" id="destination" name="destination" required placeholder="Saisir une destination..."></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group"><label for="date_range">Période du séjour</label><input type="text" id="date_range" readonly placeholder="Cliquez pour choisir les dates"><input type="hidden" id="date_start" name="date_start"><input type="hidden" id="date_end" name="date_end"></div>
+                    <div class="form-group"><label for="date_range">🗓️ Période du séjour</label><input type="text" id="date_range" name="date_range" readonly placeholder="Cliquez pour choisir les dates"><input type="hidden" id="date_start" name="date_start"><input type="hidden" id="date_end" name="date_end"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group"><label for="stars">⭐ Catégorie</label><select id="stars"><option value="3">3 ★</option><option value="4" selected>4 ★</option><option value="5">5 ★</option></select></div>
-                    <div class="form-group"><label for="meal_plan">🍽️ Formule</label><select id="meal_plan"><option value="petit_dejeuner">Petit-déjeuner</option><option value="demi_pension">Demi-pension</option><option value="pension_complete">Pension complète</option><option value="all_in">All Inclusive</option></select></div>
+                    <div class="form-group"><label for="stars">⭐ Catégorie</label><select id="stars" name="stars"><option value="2">2⭐</option><option value="3">3⭐</option><option value="4" selected>4⭐</option><option value="5">5⭐</option></select></div>
+                    <div class="form-group">
+                        <label for="num_people">👥 Nombre de personnes</label>
+                        <input type="number" id="num_people" name="num_people" value="2" min="1">
+                        <button type="button" id="toggleChildrenBtn" style="margin-top: 8px; padding: 6px 12px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 16px;">➕</span> Ajouter des enfants
+                        </button>
+                        <div id="children_wrapper" style="display:none; margin-top: 10px;">
+                            <label for="num_children">👶 Nombre d'enfants</label>
+                            <input type="number" id="num_children" name="num_children" value="0" min="0" placeholder="Nombre d'enfants">
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div id="daytrip-fields" class="hidden">
-                <h3 class="section-divider"><span>⏰ Horaires de l'excursion</span></h3>
+                <h3 class="section-divider"><span>🌅 Détails de l'Excursion</span></h3>
                 <div class="form-row">
-                    <div class="form-group"><label for="departure_time">Heure de départ</label><input type="time" id="departure_time" value="08:00"></div>
-                    <div class="form-group"><label for="return_time">Heure de retour</label><input type="time" id="return_time" value="20:00"></div>
+                    <div class="form-group"><label for="destination_daytrip">📍 Destination</label><input type="text" id="destination_daytrip" name="destination_daytrip" placeholder="Saisir une destination ou attraction..."></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="day_trip_date">🗓️ Date de l'excursion</label><input type="text" id="day_trip_date" name="day_trip_date" readonly placeholder="Cliquez pour choisir une date (optionnel)"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="departure_time">⏰ Heure de départ</label><input type="time" id="departure_time" name="departure_time" value="08:00"></div>
+                    <div class="form-group"><label for="return_time">⏰ Heure de retour</label><input type="time" id="return_time" name="return_time" value="20:00"></div>
+                </div>
+                <div class="form-group">
+                    <label for="bus_departure_daytrip">📍 Point de départ de l'autocar</label>
+                    <input type="text" id="bus_departure_daytrip" name="bus_departure_daytrip" placeholder="Ex: Place de la Gare, 1000 Bruxelles">
+                    <small class="text-gray-600">Tapez pour rechercher une adresse</small>
+                </div>
+                <div class="form-group">
+                    <label for="day_trip_description">📝 Description détaillée de la journée *</label>
+                    <textarea id="day_trip_description" name="day_trip_description" rows="8" placeholder="Décrivez le déroulement complet : départ, pauses, visites, repas, retour...
+
+Exemple :
+Départ à 8h de la Place de la Gare à Bruxelles. Voyage confortable en autocar avec pause café à mi-parcours. Arrivée à Rome vers 12h30. Visite guidée du Colisée avec guide professionnel (durée 2h). Temps libre pour déjeuner dans le quartier de Trastevere. L'après-midi, visite du Vatican et de la Chapelle Sixtine. Temps libre pour shopping ou balade. Départ retour à 18h. Arrivée prévue à Bruxelles vers 23h."></textarea>
                 </div>
             </div>
 
             <h3 class="section-divider"><span>✈️ Transport</span></h3>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="transport_type">Moyen de transport</label>
-                    <select id="transport_type">
-                        <option value="avion">Avion</option>
-                        <option value="train">Train</option>
-                        <option value="autocar">Autocar</option>
-                        <option value="voiture">Voiture</option>
-                    </select>
-                </div>
+            <div class="form-group">
+                <label for="transport_type">Moyen de transport</label>
+                <select id="transport_type" name="transport_type" class="w-1/3">
+                    <option value="autocar">🚌 Autocar</option>
+                    <option value="train">🚂 Train</option>
+                    <option value="avion" selected>✈️ Avion</option>
+                    <option value="voiture">🚗 Voiture</option>
+                </select>
             </div>
-            <div id="autocar-fields" class="conditional-fields hidden">
-                <div class="form-group mb-0">
-                    <label for="bus_departure_address">Point de départ de l'autocar</label>
-                    <input type="text" id="bus_departure_address" placeholder="Ex: Place de la Gare, Bruxelles">
+
+            <!-- Section pour les détails du transport (masquée pour les excursions) -->
+            <div id="transport-details-section">
+                 <div class="form-row hidden" id="autocar-fields">
+                    <div class="form-group"><label for="bus_departure_address">Point de départ de l'autocar</label><input type="text" id="bus_departure_address" name="bus_departure_address" placeholder="Ex: Place de la Gare, Bruxelles"></div>
+                </div>
+                 <div class="form-row hidden" id="train-fields">
+                    <div class="form-group"><label for="departure_station">Gare de départ</label><input type="text" id="departure_station" name="departure_station" placeholder="Saisir une gare..."></div>
+                    <div class="form-group">
+                        <label for="arrival_station">Gare d'arrivée</label><input type="text" id="arrival_station" name="arrival_station" placeholder="Saisir une gare...">
+                    </div>
+                    <div class="form-group"><label for="train_price">Prix du trajet (€)</label><input type="number" id="train_price" name="train_price" value="0" class="cost-input"></div>
+                </div>
+                 <div class="hidden" id="avion-fields">
+                    <div class="form-row">
+                        <div class="form-group"><label for="departure_airport">Aéroport de départ</label><input type="text" id="departure_airport" name="departure_airport" placeholder="Saisir un aéroport..."></div>
+                        <div class="form-group"><label for="arrival_airport">Aéroport d'arrivée</label><input type="text" id="arrival_airport" name="arrival_airport" placeholder="Saisir un aéroport..."></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label for="baggage_type">🧳 Bagages</label><select id="baggage_type" name="baggage_type"><option>Pas de bagages</option><option selected>Bagage cabine (10kg)</option><option>Bagage cabine + 1x 23kg en soute</option></select></div>
+                        <div class="form-group"><label for="flight_price">Prix du vol (€)</label><input type="number" id="flight_price" name="flight_price" value="0" class="cost-input"></div>
+                    </div>
+                </div>
+                <div class="form-row" id="stay-extra-costs">
+                    <div class="form-group"><label for="transfer_cost">🚐 Coût des Transferts (€)</label><input type="number" id="transfer_cost" name="transfer_cost" value="0" class="cost-input"></div>
+                    <div class="form-group"><label for="car_rental_cost">🚗 Voiture de location (€)</label><input type="number" id="car_rental_cost" name="car_rental_cost" value="0" class="cost-input"></div>
                 </div>
             </div>
 
-            <h3 class="section-divider"><span>💰 Tarification & Participants</span></h3>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="pack_price">📦 Prix du pack (€) *</label>
-                    <input type="number" id="pack_price" required placeholder="ex: 2400">
+            <div id="sejour-pricing-fields">
+                <h3 class="section-divider"><span>💰 Tarification du Séjour</span></h3>
+                <div class="form-row">
+                    <div class="form-group"><label for="hotel_b2b_price">Tarif Hôtel B2B (€)</label><input type="number" id="hotel_b2b_price" name="hotel_b2b_price" placeholder="ex: 2000" class="cost-input"></div>
+                    <div class="form-group"><label for="hotel_b2c_price">Tarif Hôtel B2C (€)</label><input type="number" id="hotel_b2c_price" name="hotel_b2c_price" placeholder="ex: 2800" class="cost-input"></div>
                 </div>
-                <div class="form-group">
-                    <label for="num_people">👥 Nombre de personnes</label>
-                    <input type="number" id="num_people" value="2" min="1">
+                 <div class="form-row">
+                    <div class="form-group"><label for="meal_plan">🍽️ Formule</label><select id="meal_plan" name="meal_plan"><option value="logement_seul">Logement seul</option><option value="petit_dejeuner">Petit-déjeuner</option><option value="demi_pension">Demi-pension</option><option value="pension_complete">Pension complète</option><option value="all_in">All Inclusive</option></select></div>
+                    <div class="form-group"><label for="surcharge_cost">Surcoût Pension (€)</label><input type="number" id="surcharge_cost" name="surcharge_cost" value="0" class="cost-input"></div>
+                </div>
+
+                <div class="cost-calculator">
+                    <div><p>Coût B2B</p><span id="total-b2b-cost" class="cost-value">0 €</span></div>
+                    <div><p>Coût B2C</p><span id="total-b2c-cost" class="cost-value">0 €</span></div>
+                    <div><p>Écart B2C/B2B</p><span id="b2c-b2b-gap" class="cost-value">0 €</span></div>
+                    <div><p>Économie Client</p><span id="client-saving" class="cost-value" style="color: #10b981;">0 €</span></div>
+                    <div><p>Marge Finale</p><span id="final-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
+                    <div><p>Marge Vendeur</p><span id="seller-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
+                    <div><p>Marge Agence</p><span id="vp-margin" class="cost-value" style="color: #2563eb;">0 €</span></div>
                 </div>
             </div>
 
-            <div class="mt-12">
-                <button type="submit" class="save-btn">🚀 Sauvegarder le Voyage</button>
+            <h3 class="section-divider"><span>📦 Prix Final</span></h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pack_price">Prix du pack (€) *</label>
+                    <input type="number" id="pack_price" name="pack_price" required placeholder="ex: 2400" class="cost-input">
+                </div>
+            </div>
+
+            <h3 class="section-divider" id="options-section"><span>✨ Options</span></h3>
+            <div class="form-group">
+                <label for="exclusive_services">Services Exclusifs Inclus</label>
+                <textarea id="exclusive_services" name="exclusive_services" rows="3" placeholder="ex: Accès au lounge VIP de l'aéroport&#10;Une bouteille de champagne en chambre&#10;Check-out tardif jusqu'à 14h"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <button type="button" id="toggleInstagramBtn" class="search-btn" style="width: auto; background-color: #f0f0f0; display: inline-flex; align-items: center; gap: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.9 3.9 0 0 0-1.417.923A3.9 3.9 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.703.01 5.555 0 5.827 0 8s.01 2.444.048 3.297c.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.297-.048c.852-.04 1.433-.174 1.942-.372.526-.205.972-.478 1.417-.923.445-.444.718-.891.923-1.417.198-.51.333-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.444-.048-3.297c-.04-.852-.174-1.433-.372-1.942a3.9 3.9 0 0 0-.923-1.417A3.9 3.9 0 0 0 13.24.42c-.51-.198-1.09-.333-1.942-.372C10.445.01 10.173 0 8 0zm0 1.442c2.136 0 2.389.007 3.232.046.78.035 1.204.166 1.486.275.373.145.64.319.92.599s.453.546.598.92c.11.282.24.705.275 1.486.039.843.047 1.096.047 3.232s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.486a2.5 2.5 0 0 1-.598.92 2.5 2.5 0 0 1-.92.598c-.282.11-.705.24-1.486.275-.843.038-1.096.047-3.232.047s-2.389-.008-3.232-.047c-.78-.035-1.203-.166-1.486-.275a2.5 2.5 0 0 1-.92-.598 2.5 2.5 0 0 1-.598-.92c-.11-.282-.24-.705-.275-1.486-.038-.843-.046-1.096-.046-3.232s.008-2.389.046-3.232c.035-.78.166-1.204.275-1.486.145-.373.319-.64.599-.92s.546-.453.92-.598c.282-.11.705-.24 1.486-.275.843-.039 1.096-.046 3.232-.046zM8 4.865a3.135 3.135 0 1 0 0 6.27 3.135 3.135 0 0 0 0-6.27zm0 5.143a2.008 2.008 0 1 1 0-4.016 2.008 2.008 0 0 1 0 4.016zm6.406-4.848a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/>
+                    </svg>
+                    <span>Ajouter un profil Instagram (Optionnel)</span>
+                </button>
+                <div id="instagram_wrapper" style="display:none; margin-top: 15px;">
+                    <label for="instagram_handle">👤 Nom d'utilisateur ou URL du profil Instagram</label>
+                    <input type="text" id="instagram_handle" name="instagram_handle" placeholder="ex: hotel_marbella ou https://instagram.com/hotel_marbella">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button type="button" id="toggleEventBtn" class="search-btn" style="width: auto; background-color: #f0f0f0; display: inline-flex; align-items: center; gap: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+                        <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2zm13 2.383-4.708 2.825L15 11.105V5.383zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741zM1 11.105l4.708-2.897L1 5.383v5.722z"/>
+                    </svg>
+                    <span>Ajouter un Event (Optionnel)</span>
+                </button>
+            </div>
+
+            <div class="form-group" id="cancellation-option">
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="has_cancellation" name="has_cancellation" class="h-4 w-4 mr-2">
+                        <label for="has_cancellation" class="mb-0">Annulation gratuite</label>
+                    </div>
+                    <div id="cancellation_date_wrapper" class="hidden flex-grow">
+                        <input type="text" id="cancellation_date" name="cancellation_date" readonly placeholder="Jusqu'au...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group bg-red-50 border border-red-200 p-3 rounded-lg" id="ultra-budget-option">
+                <label for="is_ultra_budget" class="flex items-center gap-3 m-0 text-red-700 font-semibold">
+                    <input type="checkbox" id="is_ultra_budget" name="is_ultra_budget" value="true" class="h-5 w-5">
+                    ⚠️ Marquer comme "Ultra Budget"
+                </label>
+            </div>
+
+            <div class="mt-10 pt-6 border-t">
+                <button type="submit" class="save-btn" id="generateBtn">🚀 Générer la Fiche de Voyage</button>
             </div>
         </form>
+
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <h3>🔄 Appels API sécurisés en cours...</h3>
+            <p class="text-gray-500">Nous rassemblons les photos, vidéos et informations pour enrichir votre fiche.</p>
+        </div>
+
+        <div class="result" id="result"></div>
+
+    </div>
+</div>
+
+<!-- MODALE CODE HTML -->
+<div id="htmlCodeModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <h2 class="text-xl font-bold mb-4">Code HTML de la Fiche Voyage</h2>
+        <textarea id="htmlCodeDisplay" class="html-textarea" readonly></textarea>
+        <div class="flex justify-between items-center mt-4">
+            <button id="copyHtmlCodeBtn" class="action-btn" style="background: #6c757d;">📋 Copier le code</button>
+            <div id="copyStatus" class="text-sm text-green-600 font-semibold"></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODALE EVENT -->
+<div id="event-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <h2 class="text-xl font-bold mb-4">📸 Ajouter un Event</h2>
+        
+        <div class="form-group">
+            <label for="event-images-input">Images de l'event</label>
+            <div style="border: 2px dashed #d1d5db; border-radius: 0.5rem; padding: 2rem; text-align: center; background: #f9fafb;">
+                <input type="file" id="event-images-input" accept="image/*" multiple style="display: none;">
+                <button type="button" id="event-upload-btn" style="background: #3B82F6; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; cursor: pointer; font-weight: 600;">
+                    📤 Choisir des images
+                </button>
+                <p style="margin-top: 0.5rem; color: #6b7280; font-size: 0.875rem;">ou glisser-déposer des images ici</p>
+            </div>
+            <div id="event-images-preview" style="margin-top: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem;">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="event-description">Description de l'event</label>
+            <textarea id="event-description" rows="5" placeholder="Décrivez votre événement spécial..."></textarea>
+        </div>
+        
+        <div class="flex justify-end gap-3 mt-6">
+            <button type="button" class="close-button bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg" style="position: relative; top: 0; right: 0; font-size: 1rem;">Annuler</button>
+            <button type="button" id="event-save-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODALE ASSIGNATION CLIENT -->
+<div id="client-modal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="close-button">&times;</span>
+        <h2 class="text-xl font-bold mb-4">Assigner le voyage à un client</h2>
+        
+        <div class="border-b border-gray-200 mb-4">
+            <nav class="flex space-x-4">
+                <button id="tab-new-client" class="px-3 py-2 font-medium text-sm border-b-2 border-blue-500 text-blue-600">Nouveau Client</button>
+                <button id="tab-existing-client" class="px-3 py-2 font-medium text-sm border-b-2 border-transparent text-gray-500">Client Existant</button>
+            </nav>
+        </div>
+
+        <div id="new-client-form">
+            <form id="client-form-new" class="space-y-4">
+                <div><label for="client_first_name" class="block text-sm font-medium text-slate-700">Prénom *</label><input type="text" id="client_first_name" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border"></div>
+                <div><label for="client_last_name" class="block text-sm font-medium text-slate-700">Nom *</label><input type="text" id="client_last_name" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border"></div>
+                <div><label for="client_email" class="block text-sm font-medium text-slate-700">Email *</label><input type="email" id="client_email" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border"></div>
+                <div><label for="client_phone" class="block text-sm font-medium text-slate-700">Téléphone</label><input type="tel" id="client_phone" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border"></div>
+                 <div class="mt-6 flex justify-end space-x-3">
+                    <button type="button" class="close-button bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg">Annuler</button>
+                    <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer et Assigner</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="existing-client-form" style="display: none;">
+            <div class="space-y-4">
+                <div>
+                    <label for="client-search" class="block text-sm font-medium text-slate-700">Rechercher un client</label>
+                    <input type="text" id="client-search" placeholder="Nom, prénom ou email..." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2 border">
+                </div>
+                <div id="client-list" class="max-h-60 overflow-y-auto border rounded-md p-2 space-y-2">
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+{% set google_key = g.agency_config.get('google_api_key') if g.agency_config else '' %}
+{% if not google_key %}
+    {% set google_key = config.get('GOOGLE_PLACES_API_KEY', '') %}
+{% endif %}
+<script async src="https://maps.googleapis.com/maps/api/js?key={{ google_key }}&libraries=places&callback=initializeApp"></script>
 <script>
-    function initManualForm() {
-        // Fonction utilitaire pour échapper le HTML (doit être définie avant d'être utilisée)
+    function initializeApp() {
+        const formatDate = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        new Litepicker({
+            element: document.getElementById('date_range'),
+            singleMode: false, lang: 'fr-FR', format: 'DD MMMM YYYY',
+            setup: (picker) => {
+                picker.on('selected', (date1, date2) => {
+                    document.getElementById('date_start').value = formatDate(date1.dateInstance);
+                    document.getElementById('date_end').value = formatDate(date2.dateInstance);
+                });
+            },
+        });
+
+        const dayTripPicker = new Litepicker({
+            element: document.getElementById('day_trip_date'),
+            singleMode: true,
+            lang: 'fr-FR',
+            format: 'DD MMMM YYYY',
+            setup: (picker) => {
+                picker.on('selected', (date) => {
+                    document.getElementById('date_start').value = formatDate(date.dateInstance);
+                    picker.hide();
+                });
+            }
+        });
+
+        new Litepicker({
+            element: document.getElementById('cancellation_date'),
+            singleMode: true, lang: 'fr-FR', format: 'DD MMMM YYYY'
+        });
+
+        document.getElementById('has_cancellation').addEventListener('change', function() {
+            document.getElementById('cancellation_date_wrapper').classList.toggle('hidden', !this.checked);
+        });
+
+        document.getElementById('toggleChildrenBtn').addEventListener('click', function() {
+            const wrapper = document.getElementById('children_wrapper');
+            if (wrapper.style.display === 'block') {
+                wrapper.style.display = 'none';
+                this.innerHTML = '<span style="font-size: 16px;">➕</span> Ajouter des enfants';
+            } else {
+                wrapper.style.display = 'block';
+                this.innerHTML = '<span style="font-size: 16px;">➖</span> Retirer les enfants';
+            }
+        });
+
+        document.getElementById('toggleInstagramBtn').addEventListener('click', function() {
+            const wrapper = document.getElementById('instagram_wrapper');
+            wrapper.style.display = wrapper.style.display === 'block' ? 'none' : 'block';
+        });
+
+        // --- GESTION EVENT ---
+        window.eventData = {
+            images: [],
+            description: ''
+        };
+
+        document.getElementById('toggleEventBtn').addEventListener('click', function() {
+            document.getElementById('event-modal').classList.add('is-open');
+        });
+
+        document.getElementById('event-upload-btn').addEventListener('click', function() {
+            document.getElementById('event-images-input').click();
+        });
+
+        document.getElementById('event-images-input').addEventListener('change', function(e) {
+            handleEventImages(e.target.files);
+        });
+
+        // Drag & Drop
+        const dropZone = document.querySelector('#event-modal .form-group > div');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.style.borderColor = '#3B82F6';
+                dropZone.style.background = '#EFF6FF';
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.style.borderColor = '#d1d5db';
+                dropZone.style.background = '#f9fafb';
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleEventImages(files);
+        }, false);
+
+        function handleEventImages(files) {
+            const preview = document.getElementById('event-images-preview');
+            
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        eventData.images.push(e.target.result);
+                        
+                        const imgContainer = document.createElement('div');
+                        imgContainer.style.position = 'relative';
+                        imgContainer.innerHTML = `
+                            <img src="${e.target.result}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 0.375rem;">
+                            <button type="button" style="position: absolute; top: 2px; right: 2px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px;">×</button>
+                        `;
+                        imgContainer.querySelector('button').addEventListener('click', function() {
+                            const index = Array.from(preview.children).indexOf(imgContainer);
+                            eventData.images.splice(index, 1);
+                            imgContainer.remove();
+                        });
+                        preview.appendChild(imgContainer);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        document.getElementById('event-save-btn').addEventListener('click', function() {
+            eventData.description = document.getElementById('event-description').value;
+            document.getElementById('event-modal').classList.remove('is-open');
+            showToast('✅ Event enregistré ! Il sera ajouté à la fiche.', 'success');
+            
+            // Changer le style du bouton pour indiquer qu'un event est configuré
+            const btn = document.getElementById('toggleEventBtn');
+            btn.style.background = '#10b981';
+            btn.style.color = 'white';
+        });
+
+        const hotelInput = document.getElementById('hotel_name');
+        const destinationInput = document.getElementById('destination');
+        const departureInput = document.getElementById('departure_airport');
+        const arrivalInput = document.getElementById('arrival_airport');
+
+        const hotelAutocomplete = new google.maps.places.Autocomplete(hotelInput, { types: ['establishment'] });
+        new google.maps.places.Autocomplete(destinationInput);
+        new google.maps.places.Autocomplete(document.getElementById('destination_daytrip'));
+        new google.maps.places.Autocomplete(document.getElementById('bus_departure_address'));
+        new google.maps.places.Autocomplete(document.getElementById('bus_departure_daytrip'));
+        new google.maps.places.Autocomplete(departureInput, { types: ['airport'] });
+        new google.maps.places.Autocomplete(arrivalInput, { types: ['airport'] });
+        // Pour les gares : pas de restriction de type car train_station ne fonctionne pas bien
+        new google.maps.places.Autocomplete(document.getElementById('departure_station'));
+        new google.maps.places.Autocomplete(document.getElementById('arrival_station'));
+        
+        hotelAutocomplete.setFields(['name', 'address_components']);
+        hotelAutocomplete.addListener('place_changed', () => {
+            const place = hotelAutocomplete.getPlace();
+            if (place.address_components) {
+                let city = '', country = '';
+                for (const component of place.address_components) {
+                    if (component.types.includes('locality')) city = component.long_name;
+                    if (component.types.includes('country')) country = component.long_name;
+                }
+                if (city && country) destinationInput.value = `${city}, ${country}`;
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        let generatedData = null;
+        const userMarginPercentage = {{ g.user.margin_percentage | default(80) }};
+        let allClients = [];
+
+        // --- CSRF ---
+        // Cette fonction est essentielle pour que les appels API fonctionnent.
+        // Elle doit être disponible globalement.
+        async function fetchWithCSRF(url, options = {}) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            
+            if (!options.headers) {
+                options.headers = {};
+            }
+
+            if (csrfToken) {
+                options.headers['X-CSRFToken'] = csrfToken;
+            } else {
+                console.warn('CSRF token not found. API requests might fail.');
+            }
+
+            return fetch(url, options);
+        }
+        window.fetchWithCSRF = fetchWithCSRF; // Rendre accessible globalement
+
+        // --- UTILS ---
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
@@ -128,95 +601,18 @@
             return div.innerHTML;
         }
 
-        // Initialisation des autocomplétions via l'API proxy (sécurisé)
-        initAutocomplete('hotel_name', 'establishment');
-        initAutocomplete('destination', '(cities)');
-        
-        function initAutocomplete(inputId, types) {
-            const input = document.getElementById(inputId);
-            const resultsDiv = document.createElement('div');
-            resultsDiv.className = 'autocomplete-results';
-            resultsDiv.style.cssText = 'position: absolute; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; z-index: 1000; width: 100%; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
-            input.parentElement.style.position = 'relative';
-            input.parentElement.appendChild(resultsDiv);
-            
-            let debounceTimer;
-            input.addEventListener('keyup', async (e) => {
-                clearTimeout(debounceTimer);
-                const query = e.target.value;
-                
-                if (query.length < 3) {
-                    resultsDiv.style.display = 'none';
-                    return;
-                }
-                
-                debounceTimer = setTimeout(async () => {
-                    try {
-                        const response = await fetchWithCSRF('/api/google/autocomplete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ input: query })
-                        });
-                        const data = await response.json();
-                        
-                        if (data.success && data.predictions.length > 0) {
-                            resultsDiv.innerHTML = data.predictions.map(p => `
-                                <div class="autocomplete-item" style="padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;" 
-                                     data-description="${escapeHtml(p.description)}">
-                                    <strong>${escapeHtml(p.structured_formatting.main_text)}</strong><br>
-                                    <small>${escapeHtml(p.structured_formatting.secondary_text || '')}</small>
-                                </div>
-                            `).join('');
-                            resultsDiv.style.display = 'block';
-                        } else {
-                            resultsDiv.style.display = 'none';
-                        }
-                    } catch (error) {
-                        console.error('Erreur autocomplétion:', error);
-                    }
-                }, 300);
-            });
-            
-            resultsDiv.addEventListener('click', async (e) => {
-                const item = e.target.closest('.autocomplete-item');
-                if (item) {
-                    const description = item.dataset.description;
-                    input.value = description;
-                    resultsDiv.style.display = 'none';
-                    
-                    // Si c'est l'hôtel, extraire la ville et remplir la destination
-                    if (inputId === 'hotel_name') {
-                        await extractCityFromHotel(description);
-                    }
-                }
-            });
-            
-            document.addEventListener('click', (e) => {
-                if (!input.contains(e.target) && !resultsDiv.contains(e.target)) {
-                    resultsDiv.style.display = 'none';
-                }
-            });
+        function showToast(message, type) {
+            type = type || 'info';
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+            toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 15px 20px; background: ' + bgColor + '; color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 10000; font-weight: 500;';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3000);
         }
 
-        // Fonction pour extraire la ville depuis la description de l'hôtel
-        async function extractCityFromHotel(hotelDescription) {
-            // Format typique: "Nom de l'hôtel, Rue, Ville, Pays"
-            // On prend la partie avant la dernière virgule (généralement la ville)
-            const parts = hotelDescription.split(',').map(p => p.trim());
-            
-            if (parts.length >= 2) {
-                // Prendre l'avant-dernière partie (souvent la ville)
-                const city = parts[parts.length - 2];
-                const destinationInput = document.getElementById('destination');
-                
-                // Ne remplir que si le champ destination est vide
-                if (!destinationInput.value || destinationInput.value.trim() === '') {
-                    destinationInput.value = city;
-                }
-            }
-        }
 
-        // Initialisation du sélecteur de dates
+        // --- DATE PICKERS ---
         const dateRangePicker = new Litepicker({
             element: document.getElementById('date_range'),
             singleMode: false, 
@@ -231,89 +627,771 @@
             },
         });
 
+        const dayTripPicker = new Litepicker({
+            element: document.getElementById('day_trip_date'),
+            singleMode: true,
+            lang: 'fr-FR',
+            format: 'DD MMMM YYYY',
+            setup: (picker) => {
+                picker.on('selected', (date) => {
+                    document.getElementById('date_start').value = date.toISOString().split('T')[0];
+                    picker.hide();
+                });
+            }
+        });
+
+        new Litepicker({
+            element: document.getElementById('cancellation_date'),
+            singleMode: true, lang: 'fr-FR', format: 'DD MMMM YYYY'
+        });
+
+        document.getElementById('has_cancellation').addEventListener('change', function() {
+            document.getElementById('cancellation_date_wrapper').classList.toggle('hidden', !this.checked);
+        });
+
+        // --- GESTION DES ENFANTS ---
+        document.getElementById('toggleChildrenBtn').addEventListener('click', function() {
+            const wrapper = document.getElementById('children_wrapper');
+            if (wrapper.style.display === 'block') {
+                wrapper.style.display = 'none';
+                this.innerHTML = '<span style="font-size: 16px;">➕</span> Ajouter des enfants';
+            } else {
+                wrapper.style.display = 'block';
+                this.innerHTML = '<span style="font-size: 16px;">➖</span> Retirer les enfants';
+            }
+        });
+
+        // --- DYNAMIC FIELDS LOGIC ---
         const tripTypeRadios = document.querySelectorAll('input[name="trip_type"]');
         const transportSelect = document.getElementById('transport_type');
+        const avionOption = transportSelect.querySelector('option[value="avion"]');
         
         function toggleFields() {
             const isDayTrip = document.querySelector('input[name="trip_type"]:checked').value === 'day_trip';
             
+            // Show/hide main sections
             document.getElementById('sejour-fields').classList.toggle('hidden', isDayTrip);
             document.getElementById('daytrip-fields').classList.toggle('hidden', !isDayTrip);
+            document.getElementById('sejour-pricing-fields').classList.toggle('hidden', isDayTrip);
             
+            // Cacher les coûts additionnels (transfert/voiture) pour les excursions
+            const extraCosts = document.getElementById('stay-extra-costs');
+            if (extraCosts) extraCosts.classList.toggle('hidden', isDayTrip);
+            
+            // Cacher les options non pertinentes pour les excursions
+            const transportDetailsSection = document.getElementById('transport-details-section');
+            if (transportDetailsSection) transportDetailsSection.classList.toggle('hidden', isDayTrip);
+            
+            const cancellationOption = document.getElementById('cancellation-option');
+            if (cancellationOption) cancellationOption.classList.toggle('hidden', isDayTrip);
+            
+            const ultraBudgetOption = document.getElementById('ultra-budget-option');
+            if (ultraBudgetOption) ultraBudgetOption.classList.toggle('hidden', isDayTrip);
+            
+            // Handle transport
             if(isDayTrip) {
-                transportSelect.value = 'autocar';
-                transportSelect.disabled = true;
+                // Pour une excursion, on cache l'option avion
+                avionOption.classList.add('hidden');
+                if (transportSelect.value === 'avion') {
+                    transportSelect.value = 'autocar';
+                }
             } else {
-                transportSelect.disabled = false;
+                // Pour un séjour, toutes les options sont dispos
+                avionOption.classList.remove('hidden');
             }
-            toggleAutocarFields();
+
+            // Update required fields
+            document.getElementById('destination').required = !isDayTrip;
+            document.getElementById('destination_daytrip').required = isDayTrip;
+
+            toggleTransportFields();
         }
         
-        function toggleAutocarFields() {
-            const isAutocar = transportSelect.value === 'autocar';
-            document.getElementById('autocar-fields').classList.toggle('hidden', !isAutocar);
+        function toggleTransportFields() {
+            const transportType = transportSelect.value;
+            const fields = {
+                'autocar': document.getElementById('autocar-fields'),
+                'train': document.getElementById('train-fields'),
+                'avion': document.getElementById('avion-fields')
+            };
+
+            for (const type in fields) {
+                fields[type].classList.toggle('hidden', type !== transportType);
+            }
         }
 
+        // --- COST CALCULATOR ---
+        function updateCostTotals() {
+            const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
+            const hotelB2B = getVal('hotel_b2b_price');
+            const hotelB2C = getVal('hotel_b2c_price');
+            const flight = getVal('flight_price'); // Pour avion
+            const train = getVal('train_price');   // Pour train
+            const transfer = getVal('transfer_cost');
+            const car = getVal('car_rental_cost');
+            const surcharge = getVal('surcharge_cost');
+            const packPrice = getVal('pack_price');
+
+            const totalB2B = hotelB2B + flight + train + transfer + car + surcharge;
+            const totalB2C = hotelB2C + flight + train + transfer + car + surcharge;
+            const gap = totalB2C - totalB2B;
+            const saving = totalB2C - packPrice;
+            const finalMargin = packPrice - totalB2B;
+            const sellerMargin = Math.round(finalMargin * (userMarginPercentage / 100));
+            const vpMargin = finalMargin - sellerMargin;
+
+            document.getElementById('total-b2b-cost').textContent = `${totalB2B.toFixed(0)} €`;
+            document.getElementById('total-b2c-cost').textContent = `${totalB2C.toFixed(0)} €`;
+            document.getElementById('b2c-b2b-gap').textContent = `${gap.toFixed(0)} €`;
+            document.getElementById('client-saving').textContent = `${saving.toFixed(0)} €`;
+            document.getElementById('final-margin').textContent = `${finalMargin.toFixed(0)} €`;
+            document.getElementById('seller-margin').textContent = `${sellerMargin.toFixed(0)} €`;
+            document.getElementById('vp-margin').textContent = `${vpMargin.toFixed(0)} €`;
+        }
+
+        const costInputs = document.querySelectorAll('.cost-input');
+        costInputs.forEach(input => {
+            input.addEventListener('input', updateCostTotals);
+        });
+
         tripTypeRadios.forEach(radio => radio.addEventListener('change', toggleFields));
-        transportSelect.addEventListener('change', toggleAutocarFields);
+        transportSelect.addEventListener('change', toggleTransportFields);
 
         // Gestion de la soumission du formulaire
-        document.getElementById('manual-trip-form').addEventListener('submit', async function(e) {
+        document.getElementById('voyageForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+
+            const tripId = this.dataset.tripId; // Récupérer l'ID du voyage si on est en mode édition
+            const isEditMode = !!tripId;
+
+            // Déterminer le type de voyage d'abord
             const isDayTrip = document.querySelector('input[name="trip_type"]:checked').value === 'day_trip';
-            const saveBtn = e.target.querySelector('button[type="submit"]');
-            const originalText = saveBtn.innerHTML;
-            
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = 'Sauvegarde en cours...';
 
             // Rassembler les données du formulaire
             const formData = {
                 is_day_trip: isDayTrip,
-                destination: document.getElementById('destination').value,
-                hotel_name: isDayTrip ? '' : document.getElementById('hotel_name').value,
+                destination: isDayTrip ? document.getElementById('destination_daytrip').value : document.getElementById('destination').value,
                 transport_type: document.getElementById('transport_type').value,
                 bus_departure_address: document.getElementById('bus_departure_address').value,
-                date_start: isDayTrip ? null : document.getElementById('date_start').value,
-                date_end: isDayTrip ? null : document.getElementById('date_end').value,
-                stars: isDayTrip ? null : document.getElementById('stars').value,
-                meal_plan: isDayTrip ? null : document.getElementById('meal_plan').value,
-                departure_time: isDayTrip ? document.getElementById('departure_time').value : null,
-                return_time: isDayTrip ? document.getElementById('return_time').value : null,
                 pack_price: document.getElementById('pack_price').value,
-                num_people: document.getElementById('num_people').value,
+                exclusive_services: document.getElementById('exclusive_services').value,
+                has_cancellation: document.getElementById('has_cancellation').checked,
+                cancellation_date: document.getElementById('cancellation_date').value,
+                is_ultra_budget: document.getElementById('is_ultra_budget').checked,
             };
 
-            try {
-                // Envoyer les données à l'API
-                const response = await fetchWithCSRF('/api/trips', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ form_data: formData, status: 'proposed' })
-                });
+            // Ajouter les données Event si elles existent
+            if (window.eventData && (window.eventData.images.length > 0 || window.eventData.description)) {
+                formData.event_data = window.eventData;
+            }
 
-                const result = await response.json();
-                if (result.success) {
-                    alert('✅ Voyage sauvegardé avec succès !');
-                    window.location.href = '/agency/trips'; // Redirection
-                } else {
-                    alert('❌ Erreur: ' + (result.message || 'Une erreur inconnue est survenue.'));
+            if (isDayTrip) {
+                formData.date_start = document.getElementById('date_start').value;
+                formData.departure_time = document.getElementById('departure_time').value;
+                formData.return_time = document.getElementById('return_time').value;
+                formData.bus_departure_address = document.getElementById('bus_departure_daytrip').value;
+                formData.day_trip_description = document.getElementById('day_trip_description').value;
+            } else {
+                formData.hotel_name = document.getElementById('hotel_name').value;
+                formData.date_start = document.getElementById('date_start').value;
+                formData.date_end = document.getElementById('date_end').value;
+                formData.stars = document.getElementById('stars').value;
+                formData.num_people = document.getElementById('num_people').value;
+                formData.num_children = document.getElementById('num_children').value;
+                formData.meal_plan = document.getElementById('meal_plan').value;
+                // Pricing details
+                formData.hotel_b2b_price = document.getElementById('hotel_b2b_price').value;
+                formData.hotel_b2c_price = document.getElementById('hotel_b2c_price').value;
+                formData.transfer_cost = document.getElementById('transfer_cost').value;
+                formData.car_rental_cost = document.getElementById('car_rental_cost').value;
+                formData.surcharge_cost = document.getElementById('surcharge_cost').value;
+                // Transport details
+                const transportType = document.getElementById('transport_type').value;
+                if (transportType === 'avion') formData.flight_price = document.getElementById('flight_price').value;
+                if (transportType === 'train') formData.train_price = document.getElementById('train_price').value;
+
+                formData.baggage_type = document.getElementById('baggage_type').value;
+                formData.departure_airport = document.getElementById('departure_airport').value;
+                formData.arrival_airport = document.getElementById('arrival_airport').value;
+            }
+
+            // --- NOUVEAU FLUX DE GÉNÉRATION ---
+            document.getElementById('voyageForm').classList.add('hidden');
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+
+            if (isEditMode) {
+                // --- MODE ÉDITION ---
+                // On appelle directement l'API de mise à jour
+                try {
+                    const response = await fetchWithCSRF(`/api/trips/${tripId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ form_data: formData })
+                    });
+
+                    const result = await response.json();
+                    document.getElementById('loading').style.display = 'none';
+
+                    if (result.success) {
+                        showToast('✅ Voyage mis à jour avec succès !', 'success');
+                        setTimeout(() => {
+                            window.location.href = `/agency/trips/${tripId}`;
+                        }, 1000);
+                    } else {
+                        showToast('❌ ' + (result.message || 'Erreur lors de la mise à jour'), 'error');
+                        document.getElementById('voyageForm').classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error('Erreur:', error);
+                    showToast('❌ Erreur lors de la mise à jour', 'error');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('voyageForm').classList.remove('hidden');
                 }
-            } catch (error) {
-                console.error('Erreur de soumission:', error);
-                alert('❌ Erreur de connexion au serveur.');
-            } finally {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalText;
+            } else {
+                // --- MODE CRÉATION (comportement original) ---
+                try {
+                    const response = await fetchWithCSRF('/api/generate-preview', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ form_data: formData })
+                    });
+
+                    if (response.status === 429) {
+                        const err = await response.json();
+                        throw new Error(err.error);
+                    }
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error('Erreur serveur: ' + text);
+                    }
+
+                    const data = await response.json();
+                    document.getElementById('loading').style.display = 'none';
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.style.display = 'block';
+
+                    if (data.success) {
+                        generatedData = data;
+                        resultDiv.innerHTML = `
+                            <div class="success">✅ Fiche générée !</div>
+                            <div class="stats">
+                                <div class="stat-item"><div class="stat-number">${data.api_data.photos.length}</div><div class="stat-label">Photos</div></div>
+                                <div class="stat-item"><div class="stat-number">${data.api_data.videos.length}</div><div class="stat-label">Vidéos</div></div>
+                                <div class="stat-item"><div class="stat-number">${data.api_data.total_reviews || 0}</div><div class="stat-label">Avis</div></div>
+                                <div class="stat-item"><div class="stat-number">${Object.values(data.api_data.attractions || {}).flat().length}</div><div class="stat-label">Attractions</div></div>
+                                <div class="stat-item"><div class="stat-number" style="color: #10b981;">${data.margin}€</div><div class="stat-label">Marge</div></div>
+                                <div class="stat-item"><div class="stat-number">${data.savings}€</div><div class="stat-label">Économies</div></div>
+                            </div>
+                            <div class="button-container">
+                                <a href="#" id="previewBtn" class="view-btn">👁️ Prévisualiser</a>
+                                <a href="#" id="downloadBtn" class="download-btn">📥 Télécharger</a>
+                                <button type="button" id="htmlCodeBtn" class="html-code-btn">📄 Code HTML</button>
+                                <button type="button" id="instagramBtn" class="action-btn" style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);">📱 Carousel Instagram</button>
+                                <button type="button" id="resetFormBtn" class="reset-btn" title="Nouvelle recherche">🔄</button>
+                            </div>
+                            <div id="videoEditContainer" class="video-edit-form" style="display:none;"></div>
+                            <div id="editConfirmation" style="font-weight: bold; text-align: center; margin-top: 15px;"></div>
+                            <div style="margin-top: 30px; border-top: 2px solid #e1e5e9; padding-top: 20px; text-align: center;">
+                                <h3 style="font-size: 1.2em; color: #333; margin-bottom: 15px;">Prêt à sauvegarder ?</h3>
+                                <div class="button-container">
+                                    <button id="saveProposedBtn" class="action-btn" style="background: #28a745;">Enregistrer comme Proposition</button>
+                                    <button id="saveCustomBtn" class="action-btn" style="background: #fd7e14;">Créer pour un Client</button>
+                                </div>
+                            </div>`;
+                        attachResultListeners();
+                    } else {
+                        resultDiv.innerHTML = `<div class="error">❌ Erreur: ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    document.getElementById('loading').style.display = 'none';
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+                    document.getElementById('voyageForm').classList.remove('hidden');
+                }
             }
         });
 
-        // Initialiser l'état des champs dynamiques
+        function attachResultListeners() {
+            document.getElementById('resetFormBtn').addEventListener('click', () => {
+                document.getElementById('voyageForm').reset();
+                document.getElementById('voyageForm').classList.remove('hidden');
+                document.getElementById('cancellation_date_wrapper').classList.add('hidden');
+                document.getElementById('result').style.display = 'none';
+                updateCostTotals();
+                document.querySelector('.form-container').scrollIntoView({ behavior: 'smooth' });
+            });
+
+            document.getElementById('previewBtn').addEventListener('click', async (e) => {
+                e.preventDefault();
+                const html = await getPreviewHtml();
+                if (html) {
+                    const blob = new Blob([html], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                }
+            });
+
+            document.getElementById('downloadBtn').addEventListener('click', async (e) => {
+                e.preventDefault();
+                const html = await getPreviewHtml();
+                if (html) {
+                    const blob = new Blob([html], { type: 'text/html' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `fiche_${generatedData.form_data.hotel_name.replace(/ /g, '_') || 'voyage'}.html`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            });
+
+            document.getElementById('htmlCodeBtn').addEventListener('click', async () => {
+                const html = await getPreviewHtml();
+                if (html) {
+                    document.getElementById('htmlCodeDisplay').value = html;
+                    document.getElementById('htmlCodeModal').classList.add('is-open');
+                }
+            });
+
+            document.getElementById('instagramBtn').addEventListener('click', async () => {
+                if (!generatedData) return;
+                showToast('📱 Génération du carousel Instagram...', 'info');
+                try {
+                    const response = await fetchWithCSRF('/api/generate-instagram-carousel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(generatedData)
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        // Afficher une modale avec le HTML, la caption et les hashtags
+                        alert('✅ Carousel généré !\n\nCaption:\n' + result.caption + '\n\nHashtags:\n' + result.hashtags + '\n\n(Le HTML a été généré mais vous pouvez maintenant l\'implémenter côté client avec html2canvas + JSZip pour créer les images)');
+                        showToast('✅ Carousel Instagram généré !', 'success');
+                    } else {
+                        showToast('❌ ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    showToast('❌ Erreur lors de la génération', 'error');
+                    console.error('Erreur carousel:', error);
+                }
+            });
+
+            document.getElementById('saveProposedBtn').addEventListener('click', () => {
+                if (!generatedData) return;
+                console.log('Données à sauvegarder:', generatedData);
+                saveTripData({ ...generatedData, status: 'proposed' });
+            });
+
+            document.getElementById('saveCustomBtn').addEventListener('click', async () => {
+                if (!generatedData) return;
+                await loadClients();
+                document.getElementById('client-modal').classList.add('is-open');
+            });
+        }
+
+        async function getPreviewHtml() {
+            if (!generatedData) return null;
+            try {
+                const response = await fetchWithCSRF('/api/render-html-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(generatedData)
+                });
+                if (!response.ok) throw new Error('La génération du HTML a échoué.');
+                return await response.text();
+            } catch (error) {
+                showToast(error.message, 'error');
+                return null;
+            }
+        }
+
+        async function saveTripData(payload) {
+            let btn = (payload.status === 'proposed') ? document.getElementById('saveProposedBtn') : document.querySelector('#client-form-new button[type="submit"]');
+            if(!btn) return;
+            
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Sauvegarde...';
+
+            try {
+                const response = await fetchWithCSRF('/api/trips', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Voyage enregistré avec succès ! Redirection...', 'success');
+                    window.location.href = '/agency/trips';
+                } else {
+                    showToast('Erreur lors de la sauvegarde: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Une erreur réseau est survenue lors de la sauvegarde.', 'error');
+            } finally {
+                 if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                 }
+            }
+        }
+
+        // --- Logique des modales ---
+        document.querySelectorAll('.modal .close-button').forEach(btn => {
+            btn.addEventListener('click', () => btn.closest('.modal').classList.remove('is-open'));
+        });
+        window.addEventListener('click', (event) => {
+            if (event.target.classList.contains('modal')) event.target.classList.remove('is-open');
+        });
+
+        document.getElementById('copyHtmlCodeBtn').addEventListener('click', () => {
+            const textarea = document.getElementById('htmlCodeDisplay');
+            textarea.select();
+            document.execCommand("copy");
+            const copyStatus = document.getElementById('copyStatus');
+            copyStatus.textContent = "✅ Code copié !";
+            setTimeout(() => { copyStatus.textContent = ""; }, 2000);
+        });
+
+        document.getElementById('client-form-new').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const clientData = {
+                client_first_name: document.getElementById('client_first_name').value,
+                client_last_name: document.getElementById('client_last_name').value,
+                client_email: document.getElementById('client_email').value,
+                client_phone: document.getElementById('client_phone').value,
+            };
+            console.log('Données client à sauvegarder:', clientData);
+            saveTripData({ ...generatedData, status: 'assigned', ...clientData });
+            document.getElementById('client-modal').classList.remove('is-open');
+        });
+
+        document.getElementById('tab-new-client').addEventListener('click', function() {
+            document.getElementById('new-client-form').style.display = 'block';
+            document.getElementById('existing-client-form').style.display = 'none';
+            this.className = 'px-3 py-2 font-medium text-sm border-b-2 border-blue-500 text-blue-600';
+            document.getElementById('tab-existing-client').className = 'px-3 py-2 font-medium text-sm border-b-2 border-transparent text-gray-500';
+        });
+
+        document.getElementById('tab-existing-client').addEventListener('click', function() {
+            document.getElementById('new-client-form').style.display = 'none';
+            document.getElementById('existing-client-form').style.display = 'block';
+            this.className = 'px-3 py-2 font-medium text-sm border-b-2 border-blue-500 text-blue-600';
+            document.getElementById('tab-new-client').className = 'px-3 py-2 font-medium text-sm border-b-2 border-transparent text-gray-500';
+            renderClientList(allClients);
+        });
+
+        async function loadClients() {
+            try {
+                const response = await fetchWithCSRF('/api/clients');
+                allClients = await response.json();
+            } catch (error) {
+                console.error("Erreur chargement clients:", error);
+            }
+        }
+        
+        document.getElementById('client-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredClients = allClients.filter(client => 
+                client.full_name.toLowerCase().includes(searchTerm) ||
+                (client.email && client.email.toLowerCase().includes(searchTerm))
+            );
+            renderClientList(filteredClients);
+        });
+
+        function renderClientList(clients) {
+            const listContainer = document.getElementById('client-list');
+            listContainer.innerHTML = '';
+            if (clients.length === 0) {
+                listContainer.innerHTML = '<p class="text-slate-500 text-sm p-2">Aucun client trouvé.</p>';
+                return;
+            }
+            clients.forEach(client => {
+                const clientDiv = document.createElement('div');
+                clientDiv.className = 'p-2 hover:bg-slate-100 rounded cursor-pointer';
+                clientDiv.textContent = `${client.full_name} (${client.email})`;
+                clientDiv.onclick = () => {
+                    const payload = { 
+                        ...generatedData, 
+                        status: 'assigned', 
+                        form_data: {
+                            ...generatedData.form_data,
+                            client_id: client.id 
+                        }
+                    };
+                    saveTripData(payload);
+                    document.getElementById('client-modal').classList.remove('is-open');
+                };
+                listContainer.appendChild(clientDiv);
+            });
+        }
+
         toggleFields();
-    }
-    
-    // Appeler la fonction d'initialisation au chargement de la page
-    document.addEventListener('DOMContentLoaded', initManualForm);
+        updateCostTotals();
+
+        // ===================================================================
+        // PRÉ-REMPLISSAGE DEPUIS LE WIZARD
+        // ===================================================================
+        function prefillFromWizard() {
+            // Vérifier si on vient du wizard
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!urlParams.has('from_wizard')) return;
+
+            // Récupérer les données du wizard depuis sessionStorage
+            const wizardDataStr = sessionStorage.getItem('wizardData');
+            if (!wizardDataStr) {
+                console.warn('Aucune donnée wizard trouvée dans sessionStorage');
+                return;
+            }
+
+            try {
+                const data = JSON.parse(wizardDataStr);
+                console.log('✅ Données du wizard récupérées:', data);
+
+                // 1. TYPE DE VOYAGE
+                if (data.is_day_trip) {
+                    document.querySelector('input[name="trip_type"][value="day_trip"]').checked = true;
+                } else {
+                    document.querySelector('input[name="trip_type"][value="sejour"]').checked = true;
+                }
+
+                // 2. DESTINATION
+                if (data.is_day_trip) {
+                    document.getElementById('destination_daytrip').value = data.destination || '';
+                } else {
+                    document.getElementById('destination').value = data.destination || '';
+                    document.getElementById('hotel_name').value = data.hotel_name || '';
+                }
+
+                // 3. DATES
+                if (data.date_start) {
+                    document.getElementById('date_start').value = data.date_start;
+                    if (data.is_day_trip) {
+                        // Formater la date pour l'affichage
+                        const date = new Date(data.date_start);
+                        document.getElementById('day_trip_date').value = date.toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                        });
+                    }
+                }
+                if (data.date_end && !data.is_day_trip) {
+                    document.getElementById('date_end').value = data.date_end;
+                    // Formater les dates pour l'affichage du range
+                    const dateStart = new Date(data.date_start);
+                    const dateEnd = new Date(data.date_end);
+                    document.getElementById('date_range').value = 
+                        dateStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + 
+                        ' - ' + 
+                        dateEnd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                }
+
+                // 4. HORAIRES (pour excursion)
+                if (data.is_day_trip) {
+                    if (data.departure_time) document.getElementById('departure_time').value = data.departure_time;
+                    if (data.return_time) document.getElementById('return_time').value = data.return_time;
+                }
+
+                // 5. NOMBRE DE PERSONNES & ÉTOILES
+                if (!data.is_day_trip) {
+                    if (data.num_people) document.getElementById('num_people').value = data.num_people;
+                    if (data.stars) document.getElementById('stars').value = data.stars;
+                    if (data.meal_plan) document.getElementById('meal_plan').value = data.meal_plan;
+                }
+
+                // 6. TRANSPORT
+                if (data.transport_type) {
+                    document.getElementById('transport_type').value = data.transport_type;
+                    
+                    // Remplir les champs spécifiques au transport
+                    if (data.transport_type === 'autocar' && data.bus_departure_address) {
+                        document.getElementById('bus_departure_address').value = data.bus_departure_address;
+                    }
+                    if (data.transport_type === 'avion') {
+                        if (data.departure_airport) document.getElementById('departure_airport').value = data.departure_airport;
+                        if (data.arrival_airport) document.getElementById('arrival_airport').value = data.arrival_airport;
+                        if (data.baggage_type) document.getElementById('baggage_type').value = data.baggage_type;
+                        if (data.flight_price) document.getElementById('flight_price').value = data.flight_price;
+                    }
+                    if (data.transport_type === 'train') {
+                        if (data.departure_station) document.getElementById('departure_station').value = data.departure_station;
+                        if (data.arrival_station) document.getElementById('arrival_station').value = data.arrival_station;
+                        if (data.train_price) document.getElementById('train_price').value = data.train_price;
+                    }
+                }
+
+                // 7. COÛTS (pour séjour)
+                if (!data.is_day_trip) {
+                    if (data.hotel_b2b_price) document.getElementById('hotel_b2b_price').value = data.hotel_b2b_price;
+                    if (data.hotel_b2c_price) document.getElementById('hotel_b2c_price').value = data.hotel_b2c_price;
+                    if (data.transfer_cost) document.getElementById('transfer_cost').value = data.transfer_cost;
+                    if (data.car_rental_cost) document.getElementById('car_rental_cost').value = data.car_rental_cost;
+                    if (data.surcharge_cost) document.getElementById('surcharge_cost').value = data.surcharge_cost;
+                }
+
+                // 8. PRIX FINAL
+                if (data.pack_price) document.getElementById('pack_price').value = data.pack_price;
+
+                // 9. OPTIONS
+                if (data.exclusive_services) document.getElementById('exclusive_services').value = data.exclusive_services;
+                if (data.has_cancellation) {
+                    document.getElementById('has_cancellation').checked = true;
+                    if (data.cancellation_date) {
+                        document.getElementById('cancellation_date').value = data.cancellation_date;
+                        document.getElementById('cancellation_date_wrapper').classList.remove('hidden');
+                    }
+                }
+                if (data.is_ultra_budget) {
+                    document.getElementById('is_ultra_budget').checked = true;
+                }
+
+                // Mettre à jour l'interface
+                toggleFields();
+                toggleTransportFields();
+                updateCostTotals();
+
+                // Nettoyer le sessionStorage
+                sessionStorage.removeItem('wizardData');
+
+                // Afficher un message de confirmation
+                console.log('✅ Formulaire pré-rempli avec les données du wizard !');
+
+                // Nettoyer l'URL (enlever le paramètre from_wizard)
+                window.history.replaceState({}, document.title, window.location.pathname);
+
+            } catch (error) {
+                console.error('❌ Erreur lors du pré-remplissage:', error);
+                alert('⚠️ Erreur lors du chargement des données');
+            }
+        }
+
+        // Appeler la fonction de pré-remplissage au chargement
+        prefillFromWizard();
+
+        // ===================================================================
+        // MODE ÉDITION - Charger les données d'un voyage existant
+        // ===================================================================
+        async function loadTripForEditing() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tripId = urlParams.get('edit');
+            
+            if (!tripId) return; // Pas en mode édition
+            
+            try {
+                // Changer le titre et le bouton
+                document.querySelector('h1').innerHTML = '<i class="fas fa-edit text-yellow-500 mr-2"></i>Modifier le Voyage';
+                document.querySelector('h1').nextElementSibling.textContent = 'Modifiez les détails du voyage existant.';
+                document.getElementById('generateBtn').innerHTML = '💾 Enregistrer les Modifications';
+                
+                // Charger les données du voyage
+                const response = await fetch(`/api/trips/${tripId}`);
+                if (!response.ok) throw new Error('Voyage introuvable');
+                
+                const tripData = await response.json();
+                const fullData = tripData.full_data || {};
+                const data = fullData.form_data || {};
+                
+                // Stocker l'ID du voyage pour la soumission
+                document.getElementById('voyageForm').dataset.tripId = tripId;
+                
+                // Pré-remplir tous les champs
+                // 1. TYPE DE VOYAGE
+                if (data.is_day_trip || tripData.is_day_trip) {
+                    document.querySelector('input[name="trip_type"][value="day_trip"]').checked = true;
+                } else {
+                    document.querySelector('input[name="trip_type"][value="sejour"]').checked = true;
+                }
+                
+                // 2. DESTINATION & HÔTEL
+                if (data.is_day_trip || tripData.is_day_trip) {
+                    document.getElementById('destination_daytrip').value = data.destination || '';
+                    if (data.departure_time) document.getElementById('departure_time').value = data.departure_time;
+                    if (data.return_time) document.getElementById('return_time').value = data.return_time;
+                } else {
+                    document.getElementById('destination').value = data.destination || '';
+                    document.getElementById('hotel_name').value = data.hotel_name || '';
+                    if (data.num_people) document.getElementById('num_people').value = data.num_people;
+                    if (data.stars) document.getElementById('stars').value = data.stars;
+                    if (data.meal_plan) document.getElementById('meal_plan').value = data.meal_plan;
+                }
+                
+                // 3. DATES
+                if (data.date_start) {
+                    document.getElementById('date_start').value = data.date_start;
+                    if (data.is_day_trip || tripData.is_day_trip) {
+                        const date = new Date(data.date_start);
+                        document.getElementById('day_trip_date').value = date.toLocaleDateString('fr-FR', {
+                            day: 'numeric', month: 'long', year: 'numeric'
+                        });
+                    }
+                }
+                if (data.date_end && !(data.is_day_trip || tripData.is_day_trip)) {
+                    document.getElementById('date_end').value = data.date_end;
+                    const dateStart = new Date(data.date_start);
+                    const dateEnd = new Date(data.date_end);
+                    document.getElementById('date_range').value = 
+                        dateStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + 
+                        ' - ' + 
+                        dateEnd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                }
+                
+                // 4. TRANSPORT
+                if (data.transport_type) {
+                    document.getElementById('transport_type').value = data.transport_type;
+                    if (data.transport_type === 'autocar') document.getElementById('bus_departure_address').value = data.bus_departure_address || '';
+                    if (data.transport_type === 'avion') {
+                        if (data.departure_airport) document.getElementById('departure_airport').value = data.departure_airport;
+                        if (data.arrival_airport) document.getElementById('arrival_airport').value = data.arrival_airport;
+                        if (data.baggage_type) document.getElementById('baggage_type').value = data.baggage_type;
+                        if (data.flight_price) document.getElementById('flight_price').value = data.flight_price;
+                    }
+                    if (data.transport_type === 'train') {
+                        if (data.departure_station) document.getElementById('departure_station').value = data.departure_station;
+                        if (data.arrival_station) document.getElementById('arrival_station').value = data.arrival_station;
+                        if (data.train_price) document.getElementById('train_price').value = data.train_price;
+                    }
+                }
+                
+                // 5. COÛTS
+                if (data.hotel_b2b_price) document.getElementById('hotel_b2b_price').value = data.hotel_b2b_price;
+                if (data.hotel_b2c_price) document.getElementById('hotel_b2c_price').value = data.hotel_b2c_price;
+                if (data.transfer_cost) document.getElementById('transfer_cost').value = data.transfer_cost;
+                if (data.car_rental_cost) document.getElementById('car_rental_cost').value = data.car_rental_cost;
+                if (data.surcharge_cost) document.getElementById('surcharge_cost').value = data.surcharge_cost;
+                if (data.pack_price) document.getElementById('pack_price').value = data.pack_price;
+                
+                // 6. OPTIONS
+                if (data.exclusive_services) document.getElementById('exclusive_services').value = data.exclusive_services;
+                if (data.has_cancellation) {
+                    document.getElementById('has_cancellation').checked = true;
+                    if (data.cancellation_date) {
+                        document.getElementById('cancellation_date').value = data.cancellation_date;
+                        document.getElementById('cancellation_date_wrapper').classList.remove('hidden');
+                    }
+                }
+                if (data.is_ultra_budget || tripData.is_ultra_budget) {
+                    document.getElementById('is_ultra_budget').checked = true;
+                }
+                
+                // Mettre à jour l'interface
+                toggleFields();
+                toggleTransportFields();
+                updateCostTotals();
+                
+                console.log('✅ Voyage chargé pour édition');
+                
+            } catch (error) {
+                console.error('Erreur chargement voyage:', error);
+                alert('❌ Impossible de charger le voyage. Redirection...');
+                window.location.href = '/agency/trips';
+            }
+        }
+        
+        // Charger le voyage en mode édition
+        loadTripForEditing();
+    });
 </script>
 {% endblock %}

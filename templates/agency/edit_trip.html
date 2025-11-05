@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier le Voyage: {{ trip.destination }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-section {
+        background-color: white;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .form-section h3 {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #111827;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-group label {
+        display: block;
+        font-weight: 500;
+        color: #374151;
+        margin-bottom: 0.5rem;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .readonly-field {
+        background-color: #f9fafb;
+        cursor: not-allowed;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-8">
+        <div>
+            <a href="{{ url_for('trip_detail', trip_id=trip.id) }}" class="text-sm text-blue-600 hover:underline mb-2 block">
+                <i class="fas fa-arrow-left mr-1"></i> Retour au détail du voyage
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">
+                <i class="fas fa-edit mr-2"></i>Modifier le Voyage
+            </h1>
+            <p class="text-gray-500 mt-2">{{ trip.destination }}</p>
+        </div>
+    </div>
+
+    <!-- Formulaire d'édition -->
+    <form id="edit-trip-form">
+        <!-- Informations de base -->
+        <div class="form-section">
+            <h3><i class="fas fa-info-circle mr-2 text-blue-500"></i>Informations de base</h3>
+            
+            <div class="form-group">
+                <label for="destination">Destination *</label>
+                <input type="text" id="destination" name="destination" value="{{ full_data.form_data.destination }}" required>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label for="hotel_name">Nom de l'hôtel</label>
+                    <input type="text" id="hotel_name" name="hotel_name" value="{{ full_data.form_data.hotel_name }}" placeholder="Voyage sans hôtel">
+                </div>
+
+                <div class="form-group">
+                    <label for="pack_price">Prix du forfait (€) *</label>
+                    <input type="number" id="pack_price" name="pack_price" value="{{ full_data.form_data.pack_price }}" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="is_day_trip" name="is_day_trip" {% if trip.is_day_trip %}checked{% endif %}>
+                    Il s'agit d'une excursion d'un jour
+                </label>
+            </div>
+        </div>
+
+        <!-- Section spécifique aux excursions -->
+        <div id="day-trip-section" class="form-section" style="{% if not trip.is_day_trip %}display: none;{% endif %}">
+            <h3><i class="fas fa-bus mr-2 text-green-500"></i>Détails de l'excursion</h3>
+            
+            <div class="form-group">
+                <label for="transport_type">Type de transport</label>
+                <select id="transport_type" name="transport_type">
+                    <option value="autocar" {% if full_data.form_data.transport_type == 'autocar' %}selected{% endif %}>Autocar</option>
+                    <option value="minibus" {% if full_data.form_data.transport_type == 'minibus' %}selected{% endif %}>Minibus</option>
+                    <option value="train" {% if full_data.form_data.transport_type == 'train' %}selected{% endif %}>Train</option>
+                    <option value="avion" {% if full_data.form_data.transport_type == 'avion' %}selected{% endif %}>Avion</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="bus_departure_address">Adresse de départ</label>
+                <input type="text" id="bus_departure_address" name="bus_departure_address" value="{{ full_data.form_data.bus_departure_address }}">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label for="departure_time">Heure de départ</label>
+                    <input type="time" id="departure_time" name="departure_time" value="{{ full_data.form_data.departure_time }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="return_time">Heure de retour</label>
+                    <input type="time" id="return_time" name="return_time" value="{{ full_data.form_data.return_time }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Durée du trajet</label>
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" id="travel_hours" name="travel_hours" value="{{ full_data.form_data.travel_hours or 0 }}" min="0" placeholder="Heures">
+                    <input type="number" id="travel_minutes" name="travel_minutes" value="{{ full_data.form_data.travel_minutes or 0 }}" min="0" max="59" placeholder="Minutes">
+                </div>
+            </div>
+        </div>
+
+        <!-- Section dates pour les séjours -->
+        <div id="sejour-section" class="form-section" style="{% if trip.is_day_trip %}display: none;{% endif %}">
+            <h3><i class="fas fa-calendar mr-2 text-purple-500"></i>Dates du séjour</h3>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label for="date_start">Date de début</label>
+                    <input type="date" id="date_start" name="date_start" value="{{ full_data.form_data.date_start }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="date_end">Date de fin</label>
+                    <input type="date" id="date_end" name="date_end" value="{{ full_data.form_data.date_end }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Avertissement -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-yellow-700">
+                        <strong>Note :</strong> Cette page permet de modifier les informations de base du voyage. 
+                        Pour modifier le contenu détaillé (photos, descriptions, etc.), vous devrez régénérer le voyage depuis le formulaire de création.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Boutons d'action -->
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('trip_detail', trip_id=trip.id) }}" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                Annuler
+            </a>
+            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <i class="fas fa-save mr-2"></i>Enregistrer les modifications
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Toggle sections based on trip type
+document.getElementById('is_day_trip').addEventListener('change', function() {
+    const dayTripSection = document.getElementById('day-trip-section');
+    const sejourSection = document.getElementById('sejour-section');
+    
+    if (this.checked) {
+        dayTripSection.style.display = 'block';
+        sejourSection.style.display = 'none';
+    } else {
+        dayTripSection.style.display = 'none';
+        sejourSection.style.display = 'block';
+    }
+});
+
+// Handle form submission
+document.getElementById('edit-trip-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {
+        form_data: {
+            destination: formData.get('destination'),
+            hotel_name: formData.get('hotel_name'),
+            pack_price: formData.get('pack_price'),
+            is_day_trip: formData.get('is_day_trip') === 'on',
+            transport_type: formData.get('transport_type'),
+            bus_departure_address: formData.get('bus_departure_address'),
+            departure_time: formData.get('departure_time'),
+            return_time: formData.get('return_time'),
+            travel_hours: parseInt(formData.get('travel_hours')) || 0,
+            travel_minutes: parseInt(formData.get('travel_minutes')) || 0,
+            date_start: formData.get('date_start'),
+            date_end: formData.get('date_end')
+        }
+    };
+    
+    try {
+        showToast('Enregistrement en cours...', 'info');
+        
+        const response = await fetchWithCSRF('/api/trips/{{ trip.id }}', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('✅ Voyage mis à jour avec succès !', 'success');
+            setTimeout(() => {
+                window.location.href = '{{ url_for("trip_detail", trip_id=trip.id) }}';
+            }, 1000);
+        } else {
+            showToast('❌ ' + result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('❌ Erreur lors de la mise à jour', 'error');
+    }
+});
+</script>
+{% endblock %}

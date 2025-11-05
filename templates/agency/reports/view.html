@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Rapport {{ report.report_type }} - {{ g.agency.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('reports_dashboard') }}" class="text-decoration-none text-muted">
+                <i class="bi bi-arrow-left"></i> Retour aux rapports
+            </a>
+            <h1 class="h3 mt-2 mb-2">📊 Rapport {{ report.report_type|upper }}</h1>
+            <p class="text-muted mb-0">
+                Du {{ report.period_start|format_date('long') }} au {{ report.period_end|format_date('long') }}
+            </p>
+        </div>
+        <div>
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="exportReport('excel')">
+                    <i class="bi bi-file-earmark-excel"></i> Excel
+                </button>
+                <button class="btn btn-danger" onclick="exportReport('pdf')">
+                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informations du rapport -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-2"><strong>Agence:</strong> {{ report.agency.name }}</p>
+                    <p class="mb-2"><strong>Type:</strong> <span class="badge bg-primary">{{ report.report_type }}</span></p>
+                    {% if report.user %}
+                    <p class="mb-0"><strong>Vendeur:</strong> {{ report.user.pseudo }}</p>
+                    {% else %}
+                    <p class="mb-0"><strong>Périmètre:</strong> Tous les vendeurs</p>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 text-end">
+                    <p class="mb-2"><strong>Généré le:</strong> {{ report.generated_at|format_date('full') }}</p>
+                    <p class="mb-0"><strong>Période:</strong> {{ report.period_start|format_date('short') }} - {{ report.period_end|format_date('short') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métriques principales -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-cart-check text-primary" style="font-size: 2.5rem;"></i>
+                    <h3 class="mt-3 mb-1">{{ report.total_sales }}</h3>
+                    <p class="text-muted mb-0">Ventes Totales</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-currency-euro text-success" style="font-size: 2.5rem;"></i>
+                    <h3 class="mt-3 mb-1">{{ report.total_revenue }} €</h3>
+                    <p class="text-muted mb-0">Chiffre d'Affaires</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-calculator text-warning" style="font-size: 2.5rem;"></i>
+                    <h3 class="mt-3 mb-1">{{ report.average_sale }} €</h3>
+                    <p class="text-muted mb-0">Panier Moyen</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-airplane text-info" style="font-size: 2.5rem;"></i>
+                    <h3 class="mt-3 mb-1">{{ report.trip_count }}</h3>
+                    <p class="text-muted mb-0">Voyages Créés</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Top Destinations -->
+        {% if report.detailed_data and report.detailed_data.destinations %}
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-geo-alt"></i> Top 10 Destinations</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th width="50">#</th>
+                                    <th>Destination</th>
+                                    <th width="100" class="text-end">Ventes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dest in report.detailed_data.destinations[:10] %}
+                                <tr>
+                                    <td><strong>{{ loop.index }}</strong></td>
+                                    <td>{{ dest.destination }}</td>
+                                    <td class="text-end">
+                                        <span class="badge bg-primary">{{ dest.count }}</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Performance par Vendeur -->
+        {% if not report.user_id and report.detailed_data and report.detailed_data.seller_breakdown %}
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Performance par Vendeur</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th width="50">#</th>
+                                    <th>Vendeur</th>
+                                    <th width="80" class="text-end">Ventes</th>
+                                    <th width="120" class="text-end">CA</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set sellers = report.detailed_data.seller_breakdown.items()|list %}
+                                {% set sorted_sellers = sellers|sort(attribute='1.revenue', reverse=True) %}
+                                {% for seller_id, data in sorted_sellers %}
+                                <tr>
+                                    <td><strong>{{ loop.index }}</strong></td>
+                                    <td>{{ data.pseudo }}</td>
+                                    <td class="text-end">{{ data.count }}</td>
+                                    <td class="text-end">
+                                        <strong>{{ data.revenue }} €</strong>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Répartition par type -->
+        {% if report.detailed_data and report.detailed_data.trip_types %}
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Répartition par Type</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th width="100" class="text-end">Nombre</th>
+                                    <th width="120" class="text-end">CA</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if report.detailed_data.trip_types.sejour %}
+                                <tr>
+                                    <td>Séjours</td>
+                                    <td class="text-end">{{ report.detailed_data.trip_types.sejour.count }}</td>
+                                    <td class="text-end"><strong>{{ report.detailed_data.trip_types.sejour.revenue }} €</strong></td>
+                                </tr>
+                                {% endif %}
+                                {% if report.detailed_data.trip_types.day_trip %}
+                                <tr>
+                                    <td>Excursions</td>
+                                    <td class="text-end">{{ report.detailed_data.trip_types.day_trip.count }}</td>
+                                    <td class="text-end"><strong>{{ report.detailed_data.trip_types.day_trip.revenue }} €</strong></td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Statut des voyages -->
+        {% if report.detailed_data and report.detailed_data.trip_status %}
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Statut des Voyages</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Statut</th>
+                                    <th width="100" class="text-end">Nombre</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for status, count in report.detailed_data.trip_status.items() %}
+                                <tr>
+                                    <td>
+                                        {% if status == 'proposed' %}
+                                            <span class="badge bg-secondary">Proposé</span>
+                                        {% elif status == 'assigned' %}
+                                            <span class="badge bg-info">Assigné</span>
+                                        {% elif status == 'sold' %}
+                                            <span class="badge bg-success">Vendu</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">{{ count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function exportReport(format) {
+    window.location.href = `/api/reports/{{ report.id }}/export?format=${format}`;
+}
+</script>
+{% endblock %}

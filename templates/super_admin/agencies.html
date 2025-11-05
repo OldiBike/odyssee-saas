@@ -158,24 +158,38 @@
                 </div>
             </div>
 
-            <!-- NOUVEAU : FTP Config -->
+            <!-- NOUVEAU : FTP/SFTP Config -->
             <div class="border-t pt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-2">Configuration FTP <span class="text-sm font-normal text-gray-500">(Pour la publication)</span></h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Configuration de Publication <span class="text-sm font-normal text-gray-500">(FTP/FTPS/SFTP)</span></h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Hôte FTP</label>
-                        <input type="text" id="ftp_host" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="ftp.example.com">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Protocole</label>
+                        <select id="ftp_protocol" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="auto">Automatique (détection par port)</option>
+                            <option value="ftp">FTP (non sécurisé)</option>
+                            <option value="ftps">FTPS (FTP sécurisé)</option>
+                            <option value="sftp">SFTP (SSH)</option>
+                            <option value="api">API HTTP/HTTPS (contournement Hostinger)</option>
+                        </select>
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Port <span class="text-xs text-gray-500">(21:FTP, 990:FTPS, 22:SFTP)</span></label>
+                        <input type="number" id="ftp_port" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="21">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Hôte</label>
+                        <input type="text" id="ftp_host" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="ftp.example.com">
+                    </div>
+                    <div class="col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Chemin du dossier</label>
                         <input type="text" id="ftp_path" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="/public_html/voyages/">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Utilisateur FTP</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Utilisateur</label>
                         <input type="text" id="ftp_user" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="user">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe FTP</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
                         <input type="password" id="ftp_password" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="••••••••">
                     </div>
                 </div>
@@ -470,7 +484,9 @@ document.getElementById('agency-form').addEventListener('submit', async (e) => {
         host: document.getElementById('ftp_host').value.trim(),
         path: document.getElementById('ftp_path').value.trim(),
         user: document.getElementById('ftp_user').value.trim(),
-        password: document.getElementById('ftp_password').value.trim()
+        password: document.getElementById('ftp_password').value.trim(),
+        protocol: document.getElementById('ftp_protocol').value.trim(),
+        port: document.getElementById('ftp_port').value.trim()
     };
 
     const mailConfig = {

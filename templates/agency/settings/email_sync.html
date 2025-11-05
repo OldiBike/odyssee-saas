@@ -1,0 +1,517 @@
+{% extends 'base.html' %}
+
+{% block title %}Synchronisation Email{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-0">📧 Synchronisation Email CRM</h1>
+                    <p class="text-muted mb-0">Connectez votre compte email pour synchroniser automatiquement vos échanges avec les clients</p>
+                </div>
+            </div>
+
+            <!-- État de la connexion -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card {% if is_connected %}border-success{% else %}border-warning{% endif %}">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    {% if is_connected %}
+                                        <div class="bg-success bg-opacity-10 text-success rounded-circle p-3">
+                                            <i class="fas fa-check-circle fa-2x"></i>
+                                        </div>
+                                    {% else %}
+                                        <div class="bg-warning bg-opacity-10 text-warning rounded-circle p-3">
+                                            <i class="fas fa-exclamation-circle fa-2x"></i>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h5 class="mb-1">
+                                        {% if is_connected %}
+                                            ✅ Compte connecté
+                                        {% else %}
+                                            ⚠️ Aucun compte connecté
+                                        {% endif %}
+                                    </h5>
+                                    <p class="mb-0 text-muted">
+                                        {% if is_connected %}
+                                            Provider: <strong>{{ email_provider|title }}</strong><br>
+                                            Synchronisation: {% if sync_enabled %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                                        {% else %}
+                                            Connectez votre compte email pour commencer
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">📊 Statistiques</h5>
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <h3 class="mb-0">{{ email_count }}</h3>
+                                    <small class="text-muted">Emails synchronisés</small>
+                                </div>
+                                <div class="col-6">
+                                    <h3 class="mb-0">
+                                        {% if last_sync %}
+                                            {{ last_sync|format_date('short') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Dernière sync</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if not is_connected %}
+            <!-- Choix du type de configuration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Type de Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-2 cursor-pointer h-100" id="oauth-card" onclick="selectConfigType('oauth')" style="cursor: pointer;">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-shield-alt text-primary fa-2x me-3"></i>
+                                        <h5 class="mb-0">OAuth (Recommandé)</h5>
+                                    </div>
+                                    <p class="text-muted mb-2">Gmail ou Microsoft 365</p>
+                                    <p class="small text-muted mb-0">✅ Sécurisé et sans mot de passe</p>
+                                    <p class="small text-muted mb-0">✅ Connexion en un clic</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-2 cursor-pointer h-100" id="manual-card" onclick="selectConfigType('manual')" style="cursor: pointer;">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-server text-success fa-2x me-3"></i>
+                                        <h5 class="mb-0">Configuration Manuelle</h5>
+                                    </div>
+                                    <p class="text-muted mb-2">SMTP/IMAP personnalisé</p>
+                                    <p class="small text-muted mb-0">✅ OVH, Infomaniak, serveurs pro</p>
+                                    <p class="small text-muted mb-0">✅ Contrôle total</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section OAuth -->
+            <div id="oauth-section" class="d-none">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fab fa-google me-2"></i>Connexion OAuth</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-4">
+                            <h6>Connecter votre compte Gmail</h6>
+                            <p class="text-muted">La synchronisation email vous permet de centraliser tous vos échanges avec vos clients dans le CRM.</p>
+                            <a href="{{ url_for('gmail_oauth_authorize') }}" class="btn btn-primary">
+                                <i class="fab fa-google me-2"></i>Connecter Gmail
+                            </a>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <h6 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Sécurité et confidentialité</h6>
+                            <ul class="mb-0">
+                                <li>Nous utilisons OAuth2 pour une connexion sécurisée</li>
+                                <li>Accès en lecture seule à vos emails</li>
+                                <li>Vos identifiants ne sont jamais stockés</li>
+                                <li>Tokens chiffrés dans notre base de données</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section SMTP/IMAP Manuel -->
+            <div id="manual-section" class="d-none">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-envelope-open-text text-success me-2"></i>Configuration SMTP/IMAP</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="smtpConfigForm">
+                            <!-- Configuration SMTP (Envoi) -->
+                            <div class="border-start border-4 border-success ps-3 mb-4">
+                                <h6 class="mb-3">📤 Serveur SMTP (Envoi)</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Serveur SMTP *</label>
+                                        <input type="text" name="smtp_host" required class="form-control" placeholder="smtp.example.com">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Port *</label>
+                                        <select name="smtp_port" required class="form-select">
+                                            <option value="465" selected>465 (SSL)</option>
+                                            <option value="587">587 (TLS)</option>
+                                            <option value="25">25 (Non sécurisé)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Nom d'utilisateur *</label>
+                                        <input type="text" name="smtp_username" required class="form-control" placeholder="votre@email.com">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Mot de passe *</label>
+                                        <input type="password" name="smtp_password" required class="form-control" placeholder="••••••••">
+                                    </div>
+                                    
+                                    <div class="col-12 mb-3">
+                                        <label class="form-label">Email d'envoi *</label>
+                                        <input type="email" name="smtp_from_email" required class="form-control" placeholder="contact@votre-agence.com">
+                                        <small class="text-muted">Adresse qui apparaîtra comme expéditeur</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input type="checkbox" name="smtp_use_ssl" checked class="form-check-input" id="smtp_use_ssl">
+                                    <label class="form-check-label" for="smtp_use_ssl">Utiliser SSL (recommandé)</label>
+                                </div>
+                            </div>
+                            
+                            <!-- Configuration IMAP (Réception) -->
+                            <div class="border-start border-4 border-primary ps-3 mb-4">
+                                <h6 class="mb-3">📥 Serveur IMAP (Réception)</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Serveur IMAP *</label>
+                                        <input type="text" name="imap_host" required class="form-control" placeholder="imap.example.com">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Port *</label>
+                                        <select name="imap_port" required class="form-select">
+                                            <option value="993" selected>993 (SSL)</option>
+                                            <option value="143">143 (TLS)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Nom d'utilisateur *</label>
+                                        <input type="text" name="imap_username" required class="form-control" placeholder="votre@email.com">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Mot de passe *</label>
+                                        <input type="password" name="imap_password" required class="form-control" placeholder="••••••••">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input type="checkbox" name="imap_use_ssl" checked class="form-check-input" id="imap_use_ssl">
+                                    <label class="form-check-label" for="imap_use_ssl">Utiliser SSL (recommandé)</label>
+                                </div>
+                            </div>
+                            
+                            <!-- Boutons -->
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save me-2"></i>Enregistrer la Configuration
+                                </button>
+                                
+                                <button type="button" onclick="testSmtpConnection()" class="btn btn-primary">
+                                    <i class="fas fa-vial me-2"></i>Tester la Connexion
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Exemples de configuration -->
+                        <div class="alert alert-info mt-4">
+                            <h6 class="alert-heading"><i class="fas fa-book me-2"></i>Exemples de configuration</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>OVH:</strong>
+                                    <ul class="small mb-0">
+                                        <li>SMTP: ssl0.ovh.net (port 465)</li>
+                                        <li>IMAP: ssl0.ovh.net (port 993)</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Infomaniak:</strong>
+                                    <ul class="small mb-0">
+                                        <li>SMTP: mail.infomaniak.com (port 587)</li>
+                                        <li>IMAP: mail.infomaniak.com (port 993)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <!-- Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Actions</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Actions disponibles -->
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-success" onclick="triggerSync()">
+                            <i class="fas fa-sync-alt me-2"></i>Synchroniser maintenant
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="disconnectEmail()">
+                            <i class="fas fa-unlink me-2"></i>Déconnecter
+                        </button>
+                    </div>
+
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            La synchronisation peut prendre quelques minutes selon le nombre d'emails.
+                        </small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Comment ça marche -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">💡 Comment ça marche ?</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 text-center mb-3">
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle p-3 d-inline-block mb-2">
+                                <i class="fas fa-plug fa-2x"></i>
+                            </div>
+                            <h6>1. Connexion</h6>
+                            <p class="text-muted small">Connectez votre compte email via OAuth2 ou SMTP/IMAP</p>
+                        </div>
+                        <div class="col-md-3 text-center mb-3">
+                            <div class="bg-success bg-opacity-10 text-success rounded-circle p-3 d-inline-block mb-2">
+                                <i class="fas fa-download fa-2x"></i>
+                            </div>
+                            <h6>2. Synchronisation</h6>
+                            <p class="text-muted small">Les emails sont récupérés automatiquement</p>
+                        </div>
+                        <div class="col-md-3 text-center mb-3">
+                            <div class="bg-info bg-opacity-10 text-info rounded-circle p-3 d-inline-block mb-2">
+                                <i class="fas fa-user-check fa-2x"></i>
+                            </div>
+                            <h6>3. Matching</h6>
+                            <p class="text-muted small">Les emails sont associés aux clients</p>
+                        </div>
+                        <div class="col-md-3 text-center mb-3">
+                            <div class="bg-warning bg-opacity-10 text-warning rounded-circle p-3 d-inline-block mb-2">
+                                <i class="fas fa-robot fa-2x"></i>
+                            </div>
+                            <h6>4. IA</h6>
+                            <p class="text-muted small">Résumés et analyses automatiques</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentConfigType = 'oauth';
+
+function selectConfigType(type) {
+    currentConfigType = type;
+    
+    // Mettre à jour les cartes
+    document.getElementById('oauth-card').classList.remove('border-primary', 'bg-light');
+    document.getElementById('manual-card').classList.remove('border-success', 'bg-light');
+    
+    if (type === 'oauth') {
+        document.getElementById('oauth-card').classList.add('border-primary', 'bg-light');
+        document.getElementById('oauth-section').classList.remove('d-none');
+        document.getElementById('manual-section').classList.add('d-none');
+    } else {
+        document.getElementById('manual-card').classList.add('border-success', 'bg-light');
+        document.getElementById('manual-section').classList.remove('d-none');
+        document.getElementById('oauth-section').classList.add('d-none');
+    }
+}
+
+// Initialiser l'affichage au chargement
+document.addEventListener('DOMContentLoaded', function() {
+    selectConfigType(currentConfigType);
+});
+
+// Soumettre la configuration SMTP/IMAP
+document.getElementById('smtpConfigForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const config = {
+        smtp: {
+            host: formData.get('smtp_host'),
+            port: formData.get('smtp_port'),
+            username: formData.get('smtp_username'),
+            password: formData.get('smtp_password'),
+            from_email: formData.get('smtp_from_email'),
+            use_ssl: formData.get('smtp_use_ssl') === 'on'
+        },
+        imap: {
+            host: formData.get('imap_host'),
+            port: formData.get('imap_port'),
+            username: formData.get('imap_username'),
+            password: formData.get('imap_password'),
+            use_ssl: formData.get('imap_use_ssl') === 'on'
+        }
+    };
+    
+    const btn = this.querySelector('button[type="submit"]');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
+    
+    try {
+        const response = await fetch('/api/email-sync/config-manual', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('✅ Configuration enregistrée avec succès !');
+            location.reload();
+        } else {
+            alert('❌ Erreur: ' + (data.error || 'Erreur lors de l\'enregistrement'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('❌ Erreur réseau');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+});
+
+// Tester la connexion SMTP
+async function testSmtpConnection() {
+    const formData = new FormData(document.getElementById('smtpConfigForm'));
+    const config = {
+        smtp: {
+            host: formData.get('smtp_host'),
+            port: formData.get('smtp_port'),
+            username: formData.get('smtp_username'),
+            password: formData.get('smtp_password'),
+            use_ssl: formData.get('smtp_use_ssl') === 'on'
+        }
+    };
+    
+    const btn = event.target;
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Test en cours...';
+    
+    try {
+        const response = await fetch('/api/email-sync/test-smtp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('✅ Connexion SMTP réussie !');
+        } else {
+            alert('❌ ' + (data.error || 'Échec de la connexion'));
+        }
+    } catch (error) {
+        alert('❌ Erreur réseau');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+function triggerSync() {
+    if (!confirm('Lancer la synchronisation maintenant ?')) return;
+    
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Synchronisation...';
+    
+    fetch('/api/email-sync/trigger', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Synchronisation réussie!\n\n${data.stats.processed} emails traités\n${data.stats.saved} emails sauvegardés`);
+            location.reload();
+        } else {
+            alert('❌ Erreur: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('❌ Erreur: ' + error);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+function disconnectEmail() {
+    if (!confirm('Êtes-vous sûr de vouloir déconnecter votre compte email ?\n\nLes emails déjà synchronisés resteront dans le CRM.')) return;
+    
+    fetch('/api/email-sync/disconnect', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Compte déconnecté avec succès');
+            location.reload();
+        } else {
+            alert('❌ Erreur: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('❌ Erreur: ' + error);
+    });
+}
+</script>
+{% endblock %}

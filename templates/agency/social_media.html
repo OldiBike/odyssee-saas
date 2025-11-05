@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+
+{% block title %}Générateur Social Media - {{ trip.destination }}{% endblock %}
+
+{% block extra_css %}
+<style>
+        .phone-mockup {
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 40px;
+            padding: 10px;
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+        
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 30px;
+            overflow: hidden;
+        }
+        
+        .instagram-header {
+            height: 60px;
+            background: white;
+            border-bottom: 1px solid #dbdbdb;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+        }
+        
+        .carousel-container {
+            position: relative;
+            width: 375px;
+            height: 375px;
+            overflow: hidden;
+            background: #fafafa;
+        }
+        
+        .carousel-slide {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .carousel-slide.active {
+            opacity: 1;
+        }
+        
+        .carousel-dots {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+        }
+        
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            transition: all 0.3s;
+        }
+        
+        .dot.active {
+            background: white;
+            width: 8px;
+            height: 8px;
+        }
+        
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-8">
+            <div>
+                <a href="{{ url_for('trips_list') }}" class="text-sm text-blue-600 hover:underline mb-2 block">
+                    <i class="fas fa-arrow-left mr-1"></i> Retour à la liste des voyages
+                </a>
+                <h1 class="text-3xl font-bold text-gray-900">Générateur Social Media</h1>
+                <p class="text-gray-600 mt-1">Voyage : {{ trip.destination }}</p>
+            </div>
+        </div>
+
+        <!-- Platform Selection -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">1. Choisir une plateforme</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Instagram Pack -->
+                <div class="border rounded-lg p-4 hover:shadow-lg transition cursor-pointer pack-option" data-platform="instagram">
+                    <div class="flex items-center mb-3">
+                        <svg class="w-8 h-8 mr-3" fill="url(#instagram-gradient)" viewBox="0 0 24 24">
+                            <defs>
+                                <linearGradient id="instagram-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#f58529" />
+                                    <stop offset="50%" style="stop-color:#dd2a7b" />
+                                    <stop offset="100%" style="stop-color:#515bd4" />
+                                </linearGradient>
+                            </defs>
+                            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073z"/>
+                            <path d="M12 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4z"/>
+                            <circle cx="18.406" cy="5.594" r="1.44"/>
+                        </svg>
+                        <h3 class="text-lg font-semibold">Pack Instagram</h3>
+                    </div>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li>✓ Carousel de 8 slides</li>
+                        <li>✓ Format carré 1080x1080</li>
+                        <li>✓ Photos Google Places incluses</li>
+                        <li>✓ Captions optimisées</li>
+                        <li>✓ Hashtags pertinents</li>
+                    </ul>
+                </div>
+
+                <!-- Facebook Pack -->
+                <div class="border rounded-lg p-4 hover:shadow-lg transition cursor-pointer pack-option" data-platform="facebook">
+                    <div class="flex items-center mb-3">
+                        <svg class="w-8 h-8 mr-3" fill="#1877f2" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                        </svg>
+                        <h3 class="text-lg font-semibold">Pack Facebook</h3>
+                    </div>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li>✓ Album photo optimisé</li>
+                        <li>✓ Format 1200x630</li>
+                        <li>✓ Description détaillée</li>
+                        <li>✓ Call-to-action intégré</li>
+                        <li>✓ Tags et mentions</li>
+                    </ul>
+                </div>
+
+                <!-- Multi-Platform -->
+                <div class="border rounded-lg p-4 hover:shadow-lg transition cursor-pointer pack-option" data-platform="multi">
+                    <div class="flex items-center mb-3">
+                        <svg class="w-8 h-8 mr-3" fill="#10b981" viewBox="0 0 24 24">
+                            <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-2 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
+                        </svg>
+                        <h3 class="text-lg font-semibold">Pack Multi-Plateformes</h3>
+                    </div>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li>✓ Instagram + Facebook</li>
+                        <li>✓ Stories incluses</li>
+                        <li>✓ Formats adaptés</li>
+                        <li>✓ Planning de publication</li>
+                        <li>✓ Export complet</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Description field for day trips -->
+            {% if trip.is_day_trip %}
+            <div id="dayTripDescription" class="mt-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    📝 Description de l'excursion
+                </label>
+                <textarea id="tripDescription" rows="6" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Décrivez votre journée en détail : départ, horaires, activités, repas, retour... 
+
+Exemple : 
+Départ à 8h de Bruxelles en autocar confortable. Arrivée à Rome vers midi. Visite guidée du Colisée avec un guide professionnel. Déjeuner dans un restaurant typique à Trastevere. L'après-midi, visite du Vatican et de la Chapelle Sixtine. Temps libre pour shopping. Retour prévu vers 20h à Bruxelles."></textarea>
+                <p class="mt-2 text-sm text-gray-500">
+                    💡 L'IA analysera votre description pour créer un contenu marketing attractif avec emojis et mise en forme adaptée à Instagram.
+                </p>
+            </div>
+            {% endif %}
+            
+            <button id="generateBtn" class="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                {% if trip.is_day_trip %}
+                Entrez une description puis sélectionnez une plateforme
+                {% else %}
+                Sélectionnez une plateforme pour continuer
+                {% endif %}
+            </button>
+        </div>
+
+        <!-- Preview Section (Hidden by default) -->
+        <div id="previewSection" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                <!-- Phone Mockup -->
+                <div class="flex justify-center">
+                    <div class="phone-mockup">
+                        <div class="phone-screen">
+                            <!-- Instagram Header -->
+                            <div id="mockup-header-instagram" class="instagram-header">
+                                <svg class="w-24 h-6" viewBox="0 0 360 90">
+                                    <text x="0" y="60" font-family="'Billabong', cursive" font-size="65" fill="black">Instagram</text>
+                                </svg>
+                            </div>
+                            <!-- Facebook Header (hidden by default) -->
+                            <div id="mockup-header-facebook" class="hidden items-center p-3 bg-white border-b border-gray-200">
+                                <svg class="w-6 h-6 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd" fill-rule="evenodd"></path>
+                                </svg>
+                                <div>
+                                    <p id="mockup-username" class="text-sm font-semibold text-gray-800">votre_agence</p>
+                                    <p class="text-xs text-gray-500">Sponsorisé</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Carousel -->
+                            <div class="carousel-container" id="carousel">
+                                <!-- Slides will be inserted here -->
+                            </div>
+                            
+                            <!-- Instagram Actions -->
+                            <div class="p-4 bg-white">
+                                <div class="flex justify-between mb-3">
+                                    <div class="flex gap-4">
+                                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                        </svg>
+                                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                        </svg>
+                                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.684 13.342C8.684 12.602 9.281 12 10.026 12c.744 0 1.342.602 1.342 1.342v5.316c0 .74-.598 1.342-1.342 1.342-.745 0-1.342-.602-1.342-1.342v-5.316z"/>
+                                        </svg>
+                                    </div>
+                                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+                                    </svg>
+                                </div>
+                                
+                                <!-- Caption -->
+                                <div class="text-sm" id="captionPreview">
+                                    <span id="caption-username" class="font-semibold">votre_agence</span>
+                                    <span class="caption-text">Chargement...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Panel -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-semibold mb-4">2. Personnalisation</h3>
+                    
+                    <!-- Caption Editor -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Caption Instagram
+                        </label>
+                        <textarea id="captionEditor" rows="8" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    </div>
+                    
+                    <!-- Hashtags -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Hashtags
+                        </label>
+                        <textarea id="hashtagEditor" rows="3" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex gap-4">
+                        <button id="saveBtn" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 transition">
+                            Sauvegarder
+                        </button>
+                        <button id="downloadBtn" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+                            Télécharger ZIP
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Previous Campaigns -->
+        {% if campaigns %}
+        <div class="mt-8 bg-white rounded-lg shadow-lg p-6">
+            <h3 class="text-xl font-semibold mb-4">Campagnes précédentes</h3>
+            <div class="space-y-3">
+                {% for campaign in campaigns %}
+                <div class="flex justify-between items-center p-3 border rounded-lg">
+                    <div>
+                        <p class="font-medium">{{ campaign.campaign_name }}</p>
+                        <p class="text-sm text-gray-600">
+                            Créé le {{ campaign.created_at.strftime('%d/%m/%Y à %H:%M') }}
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="loadCampaign({{ campaign.id }})" class="text-blue-600 hover:text-blue-800">
+                            Voir
+                        </button>
+                        <a href="/api/social-media/{{ campaign.id }}/download" class="text-green-600 hover:text-green-800">
+                            Télécharger
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+        let selectedPlatform = null;
+        let currentSlide = 0;
+        let campaignData = null;
+        let campaignId = null;
+
+        // Platform selection
+        document.querySelectorAll('.pack-option').forEach(option => {
+            option.addEventListener('click', function() {
+                // Remove previous selection
+                document.querySelectorAll('.pack-option').forEach(o => {
+                    o.classList.remove('ring-2', 'ring-blue-500');
+                });
+                
+                // Add selection
+                this.classList.add('ring-2', 'ring-blue-500');
+                selectedPlatform = this.dataset.platform;
+                
+                // Enable generate button
+                const btn = document.getElementById('generateBtn');
+                btn.disabled = false;
+                btn.textContent = `Générer le pack ${selectedPlatform.toUpperCase()}`;
+
+                // Mettre à jour le mockup du téléphone
+                const igHeader = document.getElementById('mockup-header-instagram');
+                const fbHeader = document.getElementById('mockup-header-facebook');
+                const captionUsername = document.getElementById('caption-username');
+
+                igHeader.classList.toggle('hidden', selectedPlatform !== 'instagram');
+                fbHeader.classList.toggle('hidden', selectedPlatform === 'instagram');
+                captionUsername.classList.toggle('hidden', selectedPlatform !== 'instagram');
+            });
+        });
+
+        // Generate campaign
+        document.getElementById('generateBtn').addEventListener('click', async function() {
+            if (!selectedPlatform) return;
+            
+            // For day trips, get the description
+            const isDayTrip = {{ 'true' if trip.is_day_trip else 'false' }};
+            let description = '';
+            
+            if (isDayTrip) {
+                description = document.getElementById('tripDescription')?.value || '';
+                if (!description.trim()) {
+                    alert('Veuillez entrer une description de l\'excursion');
+                    return;
+                }
+            }
+            
+            this.disabled = true;
+            this.innerHTML = '<svg class="loading-spinner w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="4" stroke-opacity="0.25"></circle><path stroke-width="4" stroke-linecap="round" d="M12 2a10 10 0 010 20"></path></svg> Génération en cours...';
+            
+            try {
+                const requestBody = {
+                    trip_id: {{ trip.id }},
+                    platform: selectedPlatform
+                };
+                
+                // Add description for day trips
+                if (isDayTrip) {
+                    requestBody.description = description;
+                }
+                
+                const response = await fetchWithCSRF('/api/generate-social-media', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    // Si la réponse n'est pas OK (status 4xx, 5xx), on essaie de lire le texte
+                    const errorText = await response.text();
+                    throw new Error(`Erreur serveur (${response.status}): ${errorText.substring(0, 200)}...`);
+                }
+
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const data = await response.json();
+                    if (data.success) {
+                        campaignData = data;
+                        campaignId = data.campaign_id;
+                        showPreview(data);
+                    } else {
+                        throw new Error(data.error || 'Une erreur est survenue lors de la génération.');
+                    }
+                } else {
+                    throw new Error("La réponse du serveur n'est pas au format JSON attendu.");
+                }
+            } catch (error) {
+                alert('Erreur : ' + error.message);
+            } finally {
+                this.disabled = false;
+                this.textContent = `Générer le pack ${selectedPlatform.toUpperCase()}`;
+            }
+        });
+
+        // Show preview
+        function showPreview(data) {
+            document.getElementById('previewSection').classList.remove('hidden');
+            
+            // Load slides into carousel
+            const carousel = document.getElementById('carousel');
+            carousel.innerHTML = '';
+            
+            data.slides.forEach((slide, index) => {
+                const slideDiv = document.createElement('div');
+                slideDiv.className = `carousel-slide ${index === 0 ? 'active' : ''}`;
+                slideDiv.innerHTML = `<img src="${slide.url}" alt="Slide ${index + 1}" class="w-full h-full object-cover">`;
+                carousel.appendChild(slideDiv);
+            });
+            
+            // Add dots
+            const dotsHtml = data.slides.map((_, i) => 
+                `<span class="dot ${i === 0 ? 'active' : ''}" data-slide="${i}"></span>`
+            ).join('');
+            carousel.innerHTML += `<div class="carousel-dots">${dotsHtml}</div>`;
+            
+            // Load captions
+            if (data.captions.instagram) {
+                document.getElementById('captionEditor').value = data.captions.instagram;
+                document.getElementById('captionPreview').querySelector('.caption-text').textContent = 
+                    data.captions.instagram.substring(0, 100) + '...';
+            }
+            
+            // Enable carousel navigation
+            initCarousel();
+            
+            // Scroll to preview
+            document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Carousel navigation
+        function initCarousel() {
+            const slides = document.querySelectorAll('.carousel-slide');
+            const dots = document.querySelectorAll('.dot');
+            
+            // Click on dots
+            dots.forEach((dot, index) => {
+                dot.addEventListener('click', () => {
+                    showSlide(index);
+                });
+            });
+            
+            // Auto-advance every 3 seconds
+            setInterval(() => {
+                currentSlide = (currentSlide + 1) % slides.length;
+                showSlide(currentSlide);
+            }, 3000);
+        }
+
+        function showSlide(index) {
+            const slides = document.querySelectorAll('.carousel-slide');
+            const dots = document.querySelectorAll('.dot');
+            
+            slides.forEach(slide => slide.classList.remove('active'));
+            dots.forEach(dot => dot.classList.remove('active'));
+            
+            slides[index].classList.add('active');
+            dots[index].classList.add('active');
+            currentSlide = index;
+        }
+
+        // Save campaign
+        document.getElementById('saveBtn')?.addEventListener('click', async function() {
+            if (!campaignId) return;
+            
+            const caption = document.getElementById('captionEditor').value;
+            const hashtags = document.getElementById('hashtagEditor').value;
+            
+            try {
+                const response = await fetchWithCSRF(`/api/social-media/${campaignId}/edit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        captions: { instagram: caption },
+                        hashtags: hashtags
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('Modifications sauvegardées !');
+                }
+            } catch (error) {
+                alert('Erreur lors de la sauvegarde');
+            }
+        });
+
+        // Download campaign
+        document.getElementById('downloadBtn')?.addEventListener('click', function() {
+            if (campaignId) {
+                window.location.href = `/api/social-media/${campaignId}/download`;
+            }
+        });
+
+        // Load existing campaign
+        function loadCampaign(id) {
+            // Implementation to load and display existing campaign
+            window.location.href = `/agency/trip/{{ trip.id }}/social-media?campaign=${id}`;
+        }
+
+        // Au chargement de la page, vérifier si une campagne doit être pré-chargée
+        document.addEventListener('DOMContentLoaded', function() {
+            {% if campaign_to_load %}
+                console.log("Chargement de la campagne existante #{{ campaign_to_load.id }}");
+                const dataToLoad = {
+                    success: true,
+                    campaign_id: {{ campaign_to_load.id }},
+                    slides: {{ campaign_to_load.slides_data|tojson }},
+                    captions: {{ campaign_to_load.captions|tojson }},
+                    hashtags: {{ campaign_to_load.hashtags|tojson }}
+                };
+                campaignId = dataToLoad.campaign_id;
+                campaignData = dataToLoad;
+                showPreview(dataToLoad);
+            {% endif %}
+        });
+</script>
+{% endblock %}

@@ -117,11 +117,24 @@ class Config:
     
     # Google APIs
     GOOGLE_PLACES_API_KEY = os.environ.get('GOOGLE_PLACES_API_KEY')
+    GOOGLE_GEMINI_API_KEY = os.environ.get('GOOGLE_GEMINI_API_KEY')
     YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
     
     # Stripe
     STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+
+    # Bannerbear (pour la génération d'images)
+    BANNERBEAR_API_KEY = os.environ.get('BANNERBEAR_API_KEY')
+    BANNERBEAR_TEMPLATE_ID = os.environ.get('BANNERBEAR_TEMPLATE_ID')
+    BANNERBEAR_HERO_TEMPLATE_ID = os.environ.get('BANNERBEAR_HERO_TEMPLATE_ID')
+    BANNERBEAR_SERVICE_TEMPLATE_ID = os.environ.get('BANNERBEAR_SERVICE_TEMPLATE_ID')
+    BANNERBEAR_DAY_TRIP_TEMPLATE_ID = os.environ.get('BANNERBEAR_DAY_TRIP_TEMPLATE_ID')
+    
+    # RapidAPI (pour Inspiration Voyages - Booking.com & Google Flights)
+    RAPIDAPI_KEY = os.environ.get('RAPIDAPI_KEY')
+    RAPIDAPI_BOOKING_HOST = 'booking-com15.p.rapidapi.com'
+    RAPIDAPI_FLIGHTS_HOST = 'google-flights4.p.rapidapi.com'
     
     # ==============================================================================
     # DÉVELOPPEMENT & DEBUG

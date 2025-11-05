@@ -50,8 +50,8 @@ class AIAssistant:
         """
         
         system_prompt = """
-Tu es un assistant spécialisé dans l'analyse de demandes de voyages.
-À partir d'une description en langage naturel, extrais et structure les informations.
+Tu es un assistant IA ultra-intelligent spécialisé dans l'analyse de demandes de voyages.
+Tu dois faire preuve d'INTELLIGENCE CONTEXTUELLE pour recouper toutes les informations disponibles.
 
 CHAMPS À EXTRAIRE :
 
@@ -61,7 +61,7 @@ OBLIGATOIRES :
 - is_day_trip (boolean) : true si "excursion" ou "journée" ou "day trip" ou "1 jour" ou "une journée"
 
 OPTIONNELS :
-- hotel_name (string|null) : nom de l'hôtel si mentionné explicitement
+- hotel_name (string|null) : nom COMPLET de l'hôtel (voir règles d'intelligence ci-dessous)
 - activities (array) : liste des lieux/visites mentionnés
 - price (number|null) : prix par personne si mentionné (extraire juste le nombre)
 - estimated_duration (number|null) : nombre de jours/nuits (0 si voyage d'un jour)
@@ -69,10 +69,37 @@ OPTIONNELS :
 - num_people (number|null) : nombre de personnes si mentionné (défaut: 2)
 - stars (number|null) : catégorie hôtel (1-5) selon le budget
 - meal_plan (string|null) : "logement_seul" | "petit_dejeuner" | "demi_pension" | "pension_complete" | "all_in"
+- date_start (string|null) : date de début au format "YYYY-MM-DD" si mentionnée
+- date_end (string|null) : date de fin au format "YYYY-MM-DD" si mentionnée
 
-RÈGLES D'INTELLIGENCE :
+RÈGLES D'INTELLIGENCE AVANCÉE :
 
-1. Budget & Catégorie :
+1. NOMS D'HÔTELS - Intelligence Contextuelle :
+   - Si un nom d'hôtel partiel est mentionné (ex: "Bless", "Colosseo", "Ritz"), tu DOIS :
+     * Identifier le nom complet en le recoupant avec la destination
+     * Exemple : "Bless" à Ibiza → "Bless Hotel Ibiza"
+     * Exemple : "Colosseo" à Rome → "Hotel Colosseo Rome"
+     * Exemple : "Ritz" à Paris → "Hôtel Ritz Paris"
+   - TOUJOURS remplir hotel_name avec le nom COMPLET de l'établissement
+   - Si mention de type "au Bless", "à l'hôtel X", "au X", c'est un nom d'hôtel
+   - Ne jamais laisser hotel_name à null si un nom (même partiel) est détecté
+
+2. DATES - Extraction Intelligente :
+   - Extraire les dates depuis le texte naturel et les convertir au format ISO (YYYY-MM-DD)
+   - Exemples de formats à reconnaître :
+     * "du 28/10 au 02/11" → date_start: "2025-10-28", date_end: "2025-11-02"
+     * "du 15 janvier au 20 janvier" → date_start: "2025-01-15", date_end: "2025-01-20"
+     * "3 jours du 5 au 8 mars" → date_start: "2025-03-05", date_end: "2025-03-08"
+   - Toujours utiliser l'année 2025 par défaut
+   - Si seule la date de début est mentionnée, calculer date_end en fonction de estimated_duration
+
+3. DURÉE - Calcul Intelligent :
+   - Si dates fournies : calculer estimated_duration = nombre de jours entre date_start et date_end
+   - Si mention "4 jours" : estimated_duration = 4
+   - Si mention "week-end" : estimated_duration = 2
+   - Si pas d'info et pas de dates : estimated_duration = 3 (par défaut)
+
+4. Budget & Catégorie :
    - Si budget < 300€ → stars: 2-3, meal_plan: "logement_seul" ou "petit_dejeuner"
    - Si budget 300-600€ → stars: 3-4, meal_plan: "demi_pension"
    - Si budget > 600€ → stars: 4-5, meal_plan: "pension_complete" ou "all_in"
@@ -172,7 +199,43 @@ Output: {
     "stars": 3,
     "meal_plan": "demi_pension",
     "num_people": 2,
-    "departure_city": null
+    "departure_city": null,
+    "date_start": null,
+    "date_end": null
+}
+
+Input: "4 jours en avion à Ibiza au Bless du 28/10 au 02/11"
+Output: {
+    "destination": "Ibiza, Espagne",
+    "transport_type": "avion",
+    "is_day_trip": false,
+    "activities": ["Plages d'Ibiza", "Dalt Vila", "Sunset Strip"],
+    "price": null,
+    "hotel_name": "Bless Hotel Ibiza",
+    "estimated_duration": 5,
+    "stars": 5,
+    "meal_plan": "petit_dejeuner",
+    "num_people": 2,
+    "departure_city": null,
+    "date_start": "2025-10-28",
+    "date_end": "2025-11-02"
+}
+
+Input: "Week-end au Colosseo à Rome du 15 au 17 mars, train"
+Output: {
+    "destination": "Rome, Italie",
+    "transport_type": "train",
+    "is_day_trip": false,
+    "activities": ["Colisée", "Forum Romain", "Fontaine de Trevi"],
+    "price": null,
+    "hotel_name": "Hotel Colosseo Rome",
+    "estimated_duration": 2,
+    "stars": 3,
+    "meal_plan": "petit_dejeuner",
+    "num_people": 2,
+    "departure_city": null,
+    "date_start": "2025-03-15",
+    "date_end": "2025-03-17"
 }
 
 IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans markdown (pas de ```json), sans texte additionnel.
@@ -522,6 +585,119 @@ Pas de texte, pas de markdown, juste le nombre.
                 'voiture': 360   # 6h
             }
             return defaults.get(transport_type, 360)
+    
+    def parse_day_trip_description(self, description: str) -> Dict[str, Any]:
+        """
+        Analyse une description brute d'excursion d'un jour et extrait les informations formatées
+        
+        Args:
+            description: Description libre de la journée (ex: "Départ à 8h de Bruxelles, 
+                        visite du Colisée, déjeuner à Trastevere, Vatican l'après-midi...")
+        
+        Returns:
+            Dict contenant les informations structurées :
+            {
+                "title": "Excursion à Rome",
+                "subtitle": "Colisée et Vatican",
+                "highlights": ["Visite guidée du Colisée", "Déjeuner typique", "Vatican et Chapelle Sixtine"],
+                "departure_info": "Départ 8h00 - Retour 20h00",
+                "program_summary": "Description courte et attractive de la journée",
+                "formatted_description": "Texte mis en forme pour le post Instagram"
+            }
+        """
+        
+        system_prompt = """
+Tu es un expert en marketing touristique. Tu dois analyser une description brute d'excursion d'un jour 
+et la transformer en contenu marketing attractif pour Instagram.
+
+À partir de la description, extrais et formate :
+
+1. title (string) : Titre accrocheur (ex: "Journée Magique à Rome")
+2. subtitle (string) : Sous-titre descriptif (ex: "Colisée, Vatican & Saveurs italiennes")
+3. highlights (array) : 3-5 points forts de l'excursion (chacun max 50 caractères)
+4. departure_info (string) : Info sur les horaires de départ/retour (ex: "Départ 8h - Retour 20h")
+5. program_summary (string) : Résumé court et attractif en 2-3 phrases (max 200 caractères)
+6. formatted_description (string) : Description complète formatée avec emojis et sauts de ligne pour Instagram (max 500 caractères)
+
+RÈGLES D'ÉCRITURE :
+- Style marketing positif et enthousiaste
+- Utiliser des emojis pertinents
+- Mettre en valeur les expériences uniques
+- Créer un sentiment d'urgence et d'exclusivité
+- Focus sur les bénéfices pour le client
+
+EXEMPLE d'entrée :
+"Départ tôt le matin à 8h de Bruxelles en autocar confortable. Arrivée à Rome vers midi. 
+Visite guidée du Colisée avec un guide professionnel. Déjeuner dans un restaurant typique à Trastevere. 
+L'après-midi visite du Vatican et de la Chapelle Sixtine. Temps libre pour shopping. 
+Retour prévu vers 20h à Bruxelles."
+
+EXEMPLE de sortie :
+{
+    "title": "Rome en Une Journée",
+    "subtitle": "Colisée, Vatican & Saveurs Italiennes",
+    "highlights": [
+        "✨ Visite guidée du Colisée",
+        "🍝 Déjeuner authentique à Trastevere",
+        "🎨 Vatican et Chapelle Sixtine",
+        "🛍️ Temps libre pour shopping"
+    ],
+    "departure_info": "Départ 8h00 - Retour 20h00 | Bruxelles",
+    "program_summary": "Découvrez les merveilles de Rome en une journée inoubliable ! Du Colisée au Vatican, vivez l'essence de la Ville Éternelle.",
+    "formatted_description": "🏛️ ROME EN UNE JOURNÉE\\n\\n✨ Une expérience inoubliable vous attend !\\n\\nAu programme :\\n• Colisée avec guide expert\\n• Déjeuner typique italien\\n• Vatican & Chapelle Sixtine\\n• Temps libre shopping\\n\\n🚌 Confort garanti en autocar moderne\\n📸 Souvenirs mémorables assurés !\\n\\n⏰ Départ 8h | Retour 20h"
+}
+
+IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte additionnel.
+"""
+        
+        full_prompt = system_prompt + f"\n\nDescription de l'excursion:\n{description}"
+        
+        try:
+            response = self.model.generate_content(full_prompt)
+            response_text = response.text.strip()
+            
+            # Nettoyer la réponse
+            response_text = re.sub(r'^```json\s*', '', response_text)
+            response_text = re.sub(r'\s*```$', '', response_text)
+            
+            parsed = json.loads(response_text)
+            
+            # Validation
+            required_fields = ['title', 'subtitle', 'highlights', 'departure_info', 
+                             'program_summary', 'formatted_description']
+            for field in required_fields:
+                if field not in parsed:
+                    raise ValueError(f"Champ manquant: {field}")
+            
+            parsed['success'] = True
+            return parsed
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"❌ Erreur parsing description: {e}")
+            print(f"Réponse brute: {response.text if 'response' in locals() else 'Pas de réponse'}")
+            
+            # Retour par défaut en cas d'erreur
+            return {
+                "title": "Excursion d'un Jour",
+                "subtitle": "Découverte et Aventure",
+                "highlights": [
+                    "✨ Sites touristiques majeurs",
+                    "🍽️ Pause déjeuner incluse",
+                    "🚌 Transport confortable",
+                    "📸 Moments inoubliables"
+                ],
+                "departure_info": "Informations à confirmer",
+                "program_summary": "Une journée inoubliable vous attend !",
+                "formatted_description": description[:500],
+                "success": True,
+                "used_fallback": True
+            }
+        except Exception as e:
+            print(f"❌ Erreur Gemini API: {e}")
+            return {
+                "error": f"Erreur de l'API IA: {str(e)}",
+                "success": False
+            }
 
 
 # ==============================================================================

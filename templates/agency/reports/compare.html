@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Comparer des Périodes - {{ g.agency.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- En-tête -->
+    <div class="mb-4">
+        <a href="{{ url_for('reports_dashboard') }}" class="text-decoration-none text-muted">
+            <i class="bi bi-arrow-left"></i> Retour aux rapports
+        </a>
+        <h1 class="h3 mt-2 mb-2">📊 Comparaison de Périodes</h1>
+        <p class="text-muted mb-0">Analysez l'évolution de vos ventes entre deux périodes</p>
+    </div>
+
+    <!-- Formulaire de sélection -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <form id="compareForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mb-3">📅 Période 1</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Date de début</label>
+                                <input type="date" class="form-control" id="period1Start" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Date de fin</label>
+                                <input type="date" class="form-control" id="period1End" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="mb-3">📅 Période 2</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Date de début</label>
+                                <input type="date" class="form-control" id="period2Start" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Date de fin</label>
+                                <input type="date" class="form-control" id="period2End" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-bar-chart"></i> Comparer les Périodes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Résultats de comparaison -->
+    <div id="comparisonResults" style="display: none;">
+        <!-- Métriques de comparaison -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Ventes</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 1</span>
+                            <strong id="sales1">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 2</span>
+                            <strong id="sales2">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Évolution</span>
+                            <span id="salesVariation" class="badge">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Chiffre d'Affaires</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 1</span>
+                            <strong id="revenue1">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 2</span>
+                            <strong id="revenue2">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Évolution</span>
+                            <span id="revenueVariation" class="badge">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Panier Moyen</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 1</span>
+                            <strong id="average1">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 2</span>
+                            <strong id="average2">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Évolution</span>
+                            <span id="averageVariation" class="badge">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-3">Voyages Créés</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 1</span>
+                            <strong id="trips1">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Période 2</span>
+                            <strong id="trips2">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Évolution</span>
+                            <span id="tripsVariation" class="badge">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analyse détaillée -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> Analyse Détaillée</h5>
+            </div>
+            <div class="card-body">
+                <div id="detailedAnalysis" class="text-center text-muted py-4">
+                    <p>Les données détaillées s'afficheront après la comparaison</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Chargement...</span>
+        </div>
+        <p class="text-muted mt-3">Comparaison en cours...</p>
+    </div>
+</div>
+
+<script>
+document.getElementById('compareForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const period1Start = document.getElementById('period1Start').value;
+    const period1End = document.getElementById('period1End').value;
+    const period2Start = document.getElementById('period2Start').value;
+    const period2End = document.getElementById('period2End').value;
+    
+    if (!period1Start || !period1End || !period2Start || !period2End) {
+        alert('Veuillez remplir toutes les dates');
+        return;
+    }
+    
+    // Afficher le loader
+    document.getElementById('loader').style.display = 'block';
+    document.getElementById('comparisonResults').style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/reports/compare', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                period1_start: period1Start,
+                period1_end: period1End,
+                period2_start: period2Start,
+                period2_end: period2End
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayComparison(data.comparison);
+        } else {
+            alert('Erreur: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la comparaison');
+    } finally {
+        document.getElementById('loader').style.display = 'none';
+    }
+});
+
+function displayComparison(comparison) {
+    // Ventes
+    document.getElementById('sales1').textContent = comparison.period1.total_sales;
+    document.getElementById('sales2').textContent = comparison.period2.total_sales;
+    updateVariationBadge('salesVariation', comparison.variations.sales);
+    
+    // CA
+    document.getElementById('revenue1').textContent = comparison.period1.total_revenue + ' €';
+    document.getElementById('revenue2').textContent = comparison.period2.total_revenue + ' €';
+    updateVariationBadge('revenueVariation', comparison.variations.revenue);
+    
+    // Panier moyen
+    document.getElementById('average1').textContent = comparison.period1.average_sale + ' €';
+    document.getElementById('average2').textContent = comparison.period2.average_sale + ' €';
+    updateVariationBadge('averageVariation', comparison.variations.average_sale);
+    
+    // Voyages
+    document.getElementById('trips1').textContent = comparison.period1.trip_count;
+    document.getElementById('trips2').textContent = comparison.period2.trip_count;
+    updateVariationBadge('tripsVariation', comparison.variations.trips);
+    
+    // Analyse détaillée
+    const analysis = document.getElementById('detailedAnalysis');
+    analysis.innerHTML = generateAnalysis(comparison);
+    
+    // Afficher les résultats
+    document.getElementById('comparisonResults').style.display = 'block';
+}
+
+function updateVariationBadge(elementId, variation) {
+    const badge = document.getElementById(elementId);
+    const value = parseFloat(variation);
+    
+    if (value > 0) {
+        badge.className = 'badge bg-success';
+        badge.innerHTML = '<i class="bi bi-arrow-up"></i> +' + variation.toFixed(1) + '%';
+    } else if (value < 0) {
+        badge.className = 'badge bg-danger';
+        badge.innerHTML = '<i class="bi bi-arrow-down"></i> ' + variation.toFixed(1) + '%';
+    } else {
+        badge.className = 'badge bg-secondary';
+        badge.innerHTML = '<i class="bi bi-dash"></i> 0%';
+    }
+}
+
+function generateAnalysis(comparison) {
+    let html = '<div class="row">';
+    
+    // Période 1
+    html += '<div class="col-md-6">';
+    html += '<h6>📅 Période 1 (' + comparison.period1.start + ' - ' + comparison.period1.end + ')</h6>';
+    html += '<ul>';
+    html += '<li><strong>Ventes:</strong> ' + comparison.period1.total_sales + '</li>';
+    html += '<li><strong>CA:</strong> ' + comparison.period1.total_revenue + ' €</li>';
+    html += '<li><strong>Panier moyen:</strong> ' + comparison.period1.average_sale + ' €</li>';
+    html += '<li><strong>Voyages créés:</strong> ' + comparison.period1.trip_count + '</li>';
+    html += '</ul>';
+    html += '</div>';
+    
+    // Période 2
+    html += '<div class="col-md-6">';
+    html += '<h6>📅 Période 2 (' + comparison.period2.start + ' - ' + comparison.period2.end + ')</h6>';
+    html += '<ul>';
+    html += '<li><strong>Ventes:</strong> ' + comparison.period2.total_sales + '</li>';
+    html += '<li><strong>CA:</strong> ' + comparison.period2.total_revenue + ' €</li>';
+    html += '<li><strong>Panier moyen:</strong> ' + comparison.period2.average_sale + ' €</li>';
+    html += '<li><strong>Voyages créés:</strong> ' + comparison.period2.trip_count + '</li>';
+    html += '</ul>';
+    html += '</div>';
+    
+    html += '</div>';
+    
+    return html;
+}
+</script>
+{% endblock %}

@@ -84,8 +84,14 @@
             </div>
         </div>
         <div class="flex gap-2">
-            <a href="{{ url_for('generate_trip_pdf', trip_id=trip.id) }}" target="_blank" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50" title="Télécharger la fiche de présentation">
-                <i class="fas fa-file-pdf mr-2"></i> Télécharger PDF
+            <a href="{{ url_for('preview_trip_html', trip_id=trip.id) }}" target="_blank" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-semibold" title="Voir la fiche de présentation générée">
+                <i class="fas fa-eye mr-2"></i> Voir la fiche
+            </a>
+            <a href="{{ url_for('generate_trip_pdf', trip_id=trip.id) }}" target="_blank" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50" title="Télécharger la fiche PDF">
+                <i class="fas fa-download mr-2"></i> Télécharger PDF
+            </a>
+            <a href="{{ url_for('social_media_page', trip_id=trip.id) }}" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50" style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; border: none;" title="Générer un post pour les réseaux sociaux">
+                <i class="fab fa-instagram mr-2"></i> Instagram
             </a>
             <!-- NOUVEAU : Bouton Publier -->
             {% if not trip.is_published %}
@@ -186,9 +192,9 @@
                         <div class="flex-1">
                             <div class="flex justify-between items-center">
                                 <span class="font-bold text-gray-800">{{ note.author.pseudo }}</span>
-                                <span class="text-xs text-gray-500">{{ note.created_at|format_datetime('medium') }}</span>
+                                <span class="text-xs text-gray-500">{{ note.created_at|format_date('full') }}</span>
                             </div>
-                            <p class="text-gray-700 mt-1">{{ note.content | nl2br }}</p>
+                            <p class="text-gray-700 mt-1" style="white-space: pre-wrap;">{{ note.content }}</p>
                         </div>
                     </div>
                     {% endfor %}
@@ -241,6 +247,10 @@
                         <dt>Téléphone</dt>
                         <dd><a href="tel:{{ trip.client.phone }}" class="text-blue-600 hover:underline">{{ trip.client.phone }}</a></dd>
                     </dl>
+                    <!-- NOUVEAU : Bouton Envoyer l'offre -->
+                    <button onclick="openOfferModal()" class="mt-4 w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-blue-800 font-semibold shadow-lg">
+                        <i class="fas fa-paper-plane mr-2"></i>Envoyer l'offre par email
+                    </button>
                 {% else %}
                     <p class="text-gray-500 text-sm">Aucun client n'est assigné à ce voyage.</p>
                     <button class="mt-4 w-full bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200">
@@ -249,6 +259,82 @@
                 {% endif %}
             </div>
         </div>
+    </div>
+</div>
+
+<!-- NOUVEAU : Modal d'envoi d'offre -->
+<div id="offer-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">
+            <i class="fas fa-paper-plane text-blue-600 mr-2"></i>
+            Envoyer l'offre de paiement
+        </h3>
+        <p class="text-sm text-gray-600 mb-6">
+            Le client recevra un email avec le détail du voyage et un lien de paiement Stripe sécurisé.
+        </p>
+        
+        <form id="offer-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Type de paiement</label>
+                <div class="space-y-2">
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                        <input type="radio" name="offer_payment_type" value="total" checked class="h-4 w-4 text-blue-600" onchange="toggleDownPaymentFields()">
+                        <div class="ml-3 flex-1">
+                            <span class="text-sm font-medium block">Paiement intégral</span>
+                            <span class="text-xs text-gray-500">{{ trip.price }} €</span>
+                        </div>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                        <input type="radio" name="offer_payment_type" value="down_payment" class="h-4 w-4 text-blue-600" onchange="toggleDownPaymentFields()">
+                        <div class="ml-3 flex-1">
+                            <span class="text-sm font-medium block">Paiement avec acompte</span>
+                            <span class="text-xs text-gray-500">Demander un acompte + solde</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Champs pour l'acompte (masqués par défaut) -->
+            <div id="down-payment-fields" class="hidden space-y-4">
+                <div>
+                    <label for="offer-down-payment-amount" class="block text-sm font-medium text-gray-700 mb-1">
+                        Montant de l'acompte (€)
+                    </label>
+                    <input type="number" id="offer-down-payment-amount" min="1" max="{{ trip.price }}" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                           placeholder="Ex: {{ (trip.price * 0.3) | int }}">
+                    <p class="text-xs text-gray-500 mt-1">
+                        Le solde sera de : <span id="balance-amount">{{ trip.price }}</span> €
+                    </p>
+                </div>
+                <div>
+                    <label for="offer-balance-due-date" class="block text-sm font-medium text-gray-700 mb-1">
+                        Date limite de paiement du solde
+                    </label>
+                    <input type="date" id="offer-balance-due-date" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                           min="{{ min_balance_date }}">
+                </div>
+            </div>
+            
+            <div class="bg-blue-50 p-4 rounded-lg">
+                <p class="text-sm text-blue-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Client:</strong> {{ trip.client.first_name }} {{ trip.client.last_name }} ({{ trip.client.email }})
+                </p>
+            </div>
+            
+            <div class="flex space-x-3 pt-4 border-t">
+                <button type="button" onclick="closeModal('offer-modal')" 
+                        class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                    Annuler
+                </button>
+                <button type="submit" 
+                        class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
+                    <i class="fas fa-paper-plane mr-2"></i>Envoyer l'offre
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -291,8 +377,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- NOUVEAU : Script pour la publication -->
 <script>
+// Fonctions globales
 function copyPaymentLink() {
     const input = document.getElementById('payment-link-input');
     input.select();
@@ -334,58 +420,25 @@ function openPaymentModal() {
     document.getElementById('payment-modal').classList.remove('hidden');
 }
 
+function openOfferModal() {
+    document.getElementById('offer-modal').classList.remove('hidden');
+}
+
 function closeModal(modalId) {
     document.getElementById(modalId).classList.add('hidden');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const paymentForm = document.getElementById('payment-form');
-    paymentForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const amountInput = document.getElementById('down-payment-amount');
-        const amount = parseInt(amountInput.value);
-        const method = document.querySelector('input[name="payment_method"]:checked').value;
+function toggleDownPaymentFields() {
+    const paymentType = document.querySelector('input[name="offer_payment_type"]:checked').value;
+    const downPaymentFields = document.getElementById('down-payment-fields');
+    
+    if (paymentType === 'down_payment') {
+        downPaymentFields.classList.remove('hidden');
+    } else {
+        downPaymentFields.classList.add('hidden');
+    }
+}
 
-        if (isNaN(amount) || amount <= 0) {
-            showToast('Veuillez entrer un montant valide.', 'error');
-            return;
-        }
-
-        let url, body;
-        if (method === 'stripe') {
-            url = `/api/trips/{{ trip.id }}/create-payment-link`;
-            body = JSON.stringify({ amount: amount });
-        } else {
-            url = `/api/trips/{{ trip.id }}/request-manual-payment`;
-            body = JSON.stringify({ amount: amount });
-        }
-
-        try {
-            const response = await fetchWithCSRF(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: body
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                showToast(result.message);
-                closeModal('payment-modal');
-                window.location.reload();
-            } else {
-                showToast(result.message, 'error');
-            }
-        } catch (error) {
-            showToast('Erreur de connexion.', 'error');
-        }
-    });
-});
-</script>
-
-<script>
 async function publishTrip(tripId) {
     if (!confirm("Êtes-vous sûr de vouloir publier cette fiche de voyage ?")) {
         return;
@@ -403,7 +456,7 @@ async function publishTrip(tripId) {
 
         if (result.success) {
             showToast(result.message);
-            window.location.reload(); // Recharger la page pour voir le nouveau statut
+            window.location.reload();
         } else {
             showToast(result.message, 'error');
         }
@@ -411,42 +464,6 @@ async function publishTrip(tripId) {
         showToast('Erreur de connexion.', 'error');
     }
 }
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('add-note-form');
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const contentInput = document.getElementById('note-content');
-        const content = contentInput.value.trim();
-
-        if (!content) {
-            showToast('Veuillez écrire une note.', 'error');
-            return;
-        }
-
-        try {
-            const response = await fetchWithCSRF(`/api/trips/{{ trip.id }}/notes`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ content: content })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                addNoteToDOM(result.note);
-                contentInput.value = ''; // Vider le champ
-            } else {
-                showToast(result.message, 'error');
-            }
-        } catch (error) {
-            showToast('Erreur de connexion.', 'error');
-        }
-    });
-});
 
 function addNoteToDOM(note) {
     const notesList = document.getElementById('notes-list');
@@ -462,7 +479,173 @@ function addNoteToDOM(note) {
             <p class="text-gray-700 mt-1">${note.content.replace(/\n/g, '<br>')}</p>
         </div>
     `;
-    notesList.prepend(noteElement); // Ajouter la nouvelle note en haut de la liste
+    notesList.prepend(noteElement);
 }
+
+// Initialisation au chargement du DOM
+document.addEventListener('DOMContentLoaded', () => {
+    const tripPrice = parseInt('{{ trip.price }}');
+    
+    // Ouvrir automatiquement la modale si l'URL contient #send-offer
+    if (window.location.hash === '#send-offer') {
+        openOfferModal();
+        // Supprimer le hash de l'URL pour éviter de rouvrir à chaque refresh
+        history.replaceState(null, null, ' ');
+    }
+    
+    // Gestion du formulaire de demande de paiement
+    const paymentForm = document.getElementById('payment-form');
+    if (paymentForm) {
+        paymentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const amountInput = document.getElementById('down-payment-amount');
+            const amount = parseInt(amountInput.value);
+            const method = document.querySelector('input[name="payment_method"]:checked').value;
+
+            if (isNaN(amount) || amount <= 0) {
+                showToast('Veuillez entrer un montant valide.', 'error');
+                return;
+            }
+
+            let url, body;
+            if (method === 'stripe') {
+                url = `/api/trips/{{ trip.id }}/create-payment-link`;
+                body = JSON.stringify({ amount: amount });
+            } else {
+                url = `/api/trips/{{ trip.id }}/request-manual-payment`;
+                body = JSON.stringify({ amount: amount });
+            }
+
+            try {
+                const response = await fetchWithCSRF(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: body
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(result.message);
+                    closeModal('payment-modal');
+                    window.location.reload();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Erreur de connexion.', 'error');
+            }
+        });
+    }
+    
+    // Gestion du formulaire d'envoi d'offre
+    const offerForm = document.getElementById('offer-form');
+    if (offerForm) {
+        // Calcul dynamique du solde
+        const downPaymentInput = document.getElementById('offer-down-payment-amount');
+        const balanceAmountSpan = document.getElementById('balance-amount');
+        
+        if (downPaymentInput && balanceAmountSpan) {
+            downPaymentInput.addEventListener('input', () => {
+                const downPayment = parseInt(downPaymentInput.value) || 0;
+                const balance = tripPrice - downPayment;
+                balanceAmountSpan.textContent = Math.max(0, balance);
+            });
+        }
+        
+        // Soumission du formulaire d'offre
+        offerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const paymentType = document.querySelector('input[name="offer_payment_type"]:checked').value;
+            
+            let requestBody = {
+                payment_type: paymentType
+            };
+            
+            // Si acompte, ajouter les champs supplémentaires
+            if (paymentType === 'down_payment') {
+                const downPaymentAmount = parseInt(document.getElementById('offer-down-payment-amount').value);
+                const balanceDueDate = document.getElementById('offer-balance-due-date').value;
+                
+                if (!downPaymentAmount || downPaymentAmount <= 0 || downPaymentAmount >= tripPrice) {
+                    showToast('Veuillez entrer un montant d\'acompte valide.', 'error');
+                    return;
+                }
+                
+                if (!balanceDueDate) {
+                    showToast('Veuillez indiquer la date limite de paiement du solde.', 'error');
+                    return;
+                }
+                
+                requestBody.down_payment_amount = downPaymentAmount;
+                requestBody.balance_due_date = balanceDueDate;
+            }
+            
+            try {
+                const response = await fetchWithCSRF(`/api/trips/{{ trip.id }}/send-offer`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message);
+                    closeModal('offer-modal');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showToast('Erreur lors de l\'envoi de l\'offre.', 'error');
+            }
+        });
+    }
+    
+    // Gestion du formulaire de notes
+    const noteForm = document.getElementById('add-note-form');
+    if (noteForm) {
+        noteForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const contentInput = document.getElementById('note-content');
+            const content = contentInput.value.trim();
+
+            if (!content) {
+                showToast('Veuillez écrire une note.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetchWithCSRF(`/api/trips/{{ trip.id }}/notes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: content })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    addNoteToDOM(result.note);
+                    contentInput.value = '';
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Erreur de connexion.', 'error');
+            }
+        });
+    }
+});
 </script>
 {% endblock %}

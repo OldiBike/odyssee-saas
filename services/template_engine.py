@@ -1,805 +1,771 @@
-# services/template_engine.py
-"""
-Moteur de génération de templates HTML pour les fiches de voyage
-"""
+# services.py - Version finale, fusionnée et corrigée
+import os
+import requests
+import json
+import re
+import base64
+from datetime import datetime
+import google.generativeai as genai
+from bs4 import BeautifulSoup
+import unidecode
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime, time
+class PublicationService:
+    """Gère la publication (upload, suppression) des fiches de voyage."""
+    def __init__(self, config):
+        self.api_url = config.get('UPLOAD_API_URL') or os.environ.get('UPLOAD_API_URL', 'https://www.voyages-privileges.be/api/upload.php')
+        self.api_key = config.get('UPLOAD_API_KEY') or os.environ.get('UPLOAD_API_KEY', 'SecretUploadKey2025')
+        
+        print(f"📡 Configuration Publication:")
+        print(f"   Mode: API HTTP (Railway compatible)")
+        print(f"   API URL: {self.api_url}")
+        print(f"   API Key: {self.api_key[:10]}... (tronquée pour sécurité)")
 
+    def _upload_via_api(self, filename, content_bytes, directory):
+        """Méthode unifiée pour uploader des fichiers via l'API de publication."""
+        try:
+            print(f"📤 Upload via API: {filename} vers {directory}/")
+            
+            content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+            
+            payload = {
+                'filename': filename,
+                'content': content_base64,
+                'directory': directory
+            }
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'X-Api-Key': self.api_key 
+            }
+            
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200 and response.json().get('success'):
+                result = response.json()
+                print(f"✅ Upload réussi: {result.get('url', '')}")
+                return True
+            else:
+                print(f"❌ Erreur API (HTTP {response.status_code}): {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Erreur critique lors de l'upload: {e}")
+            return False
 
-class TemplateEngine:
-    """Générateur de templates HTML pour les fiches de voyage"""
+    def upload_document(self, filename, file_content_bytes, trip_id):
+        """Téléverse un document (PDF, etc.) dans un sous-dossier spécifique au voyage."""
+        directory = f"documents/{trip_id}"
+        return self._upload_via_api(filename, file_content_bytes, directory)
+
+    def download_document(self, filename, trip_id):
+        """Télécharge un document depuis le serveur."""
+        try:
+            url = f"https://www.voyages-privileges.be/documents/{trip_id}/{filename}"
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                return response.content
+            print(f"❌ Document non trouvé (HTTP {response.status_code}): {url}")
+            return None
+        except Exception as e:
+            print(f"❌ Erreur de téléchargement du document: {e}")
+            return None
+
+    def _generate_base_filename(self, trip_data):
+        """Génère un nom de fichier standardisé basé sur l'hôtel et les dates."""
+        form_data = trip_data.get('form_data', {})
+        hotel_name = form_data.get('hotel_name', 'voyage').split(',')[0].strip()
+        date_start = form_data.get('date_start', 'nodate')
+        date_end = form_data.get('date_end', 'nodate')
+        base_name = unidecode.unidecode(hotel_name).lower()
+        base_name = re.sub(r'[^a-z0-9]+', '_', base_name).strip('_')
+        return f"{base_name}_{date_start}_{date_end}"
+
+    def publish_public_offer(self, trip):
+        """Publie une offre dans le dossier public /offres/."""
+        full_trip_data = json.loads(trip.full_data_json)
+        html_content = generate_travel_page_html(
+            full_trip_data['form_data'],
+            full_trip_data['api_data'],
+            full_trip_data.get('savings', 0),
+            full_trip_data.get('comparison_total', 0),
+            creator_pseudo=trip.user.pseudo  # CORRECTION: On passe le pseudo du créateur
+        )
+        base_filename = self._generate_base_filename(full_trip_data)
+        filename = f"{base_filename}.html"
+        if self._upload_via_api(filename, html_content.encode('utf-8'), 'offres'):
+            return filename
+        return None
+
+    def publish_client_offer(self, trip):
+        """Publie une offre privée dans le dossier /clients/."""
+        full_trip_data = json.loads(trip.full_data_json)
+        base_filename = self._generate_base_filename(full_trip_data)
+        
+        raw_name = f"{trip.client.first_name} {trip.client.last_name}"
+        slug = unidecode.unidecode(raw_name).lower()
+        slug = re.sub(r"[\s']+", '_', slug)
+        client_name_slug = re.sub(r'[^a-z0-9_]', '', slug)
+        filename = f"{base_filename}_{client_name_slug}.html"
+        
+        html_content = generate_travel_page_html(
+            full_trip_data['form_data'],
+            full_trip_data['api_data'],
+            full_trip_data.get('savings', 0),
+            full_trip_data.get('comparison_total', 0),
+            creator_pseudo=trip.user.pseudo  # CORRECTION: On passe le pseudo du créateur
+        )
+        if self._upload_via_api(filename, html_content.encode('utf-8'), 'clients'):
+            return filename
+        return None
+
+    def unpublish(self, filename, is_client_offer=False):
+        """Supprime un fichier publié via l'API."""
+        try:
+            directory = 'clients' if is_client_offer else 'offres'
+            print(f"🗑️ Suppression via API: {filename} dans {directory}/")
+            
+            payload = { 'filename': filename, 'directory': directory }
+            headers = { 'Content-Type': 'application/json', 'X-Api-Key': self.api_key }
+            
+            response = requests.delete(self.api_url, json=payload, headers=headers, timeout=30)
+
+            if response.status_code == 200 and response.json().get('success'):
+                print(f"✅ Suppression réussie: {filename}")
+                return True
+            print(f"❌ Erreur suppression (HTTP {response.status_code}): {response.text}")
+            return False
+        except Exception as e:
+            print(f"❌ Erreur critique lors de la suppression: {e}")
+            return False
     
-    # Templates disponibles
-    TEMPLATES = {
-        'classic': 'template_classic',
-        'modern': 'template_modern', 
-        'luxury': 'template_luxury'
+    def test_connection(self):
+        """Test de connexion à l'API de publication."""
+        try:
+            print("\n🔍 TEST DE CONNEXION API")
+            headers = {'X-Api-Key': self.api_key}
+            response = requests.get(self.api_url, headers=headers, timeout=10)
+            if response.status_code == 200 and response.json().get('success'):
+                result = response.json()
+                print(f"✅ API connectée: {result.get('message')}")
+                return True
+            else:
+                print(f"❌ Erreur connexion API (HTTP {response.status_code}): {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ Erreur critique pendant le test: {e}")
+            return False
+
+class RealAPIGatherer:
+    """Récupère les données réelles depuis les APIs de Google (Maps, Gemini, YouTube)."""
+    def __init__(self):
+        self.google_api_key = os.environ.get('GOOGLE_API_KEY')
+        if not self.google_api_key:
+            print("❌ ERREUR CRITIQUE: Variable GOOGLE_API_KEY manquante")
+        else:
+            genai.configure(api_key=self.google_api_key)
+            print("✅ Clé API Google chargée et configurée")
+
+    def generate_whatsapp_catchphrase(self, trip_details):
+        if not self.google_api_key:
+            return "Une offre à ne pas manquer !"
+        try:
+            model = genai.GenerativeModel('models/gemini-2.5-flash')
+            prompt = (
+                f"Crée une très courte phrase marketing (maximum 15 mots) pour une publication WhatsApp concernant un voyage. "
+                f"Voici les détails : Hôtel '{trip_details['hotel_name']}' à {trip_details['destination']}. "
+                f"Le but est de donner envie de cliquer sur le lien de l'offre. Sois percutant et inspirant. "
+                f"Exemples : 'Le paradis vous attend à prix d'ami ! 🌴', 'Évadez-vous sous le soleil de {trip_details['destination']} à un tarif jamais vu !', "
+                f"'Saisissez cette chance unique de découvrir {trip_details['hotel_name']} ! ✨'"
+            )
+            response = model.generate_content(prompt)
+            clean_text = response.text.strip().replace('*', '').replace('"', '')
+            return clean_text
+        except Exception as e:
+            print(f"❌ Erreur API Gemini (catchphrase): {e}")
+            return "Découvrez notre offre exclusive pour cette destination de rêve !"
+            
+    def get_real_hotel_photos(self, hotel_name, destination):
+        if not self.google_api_key: return []
+        try:
+            search_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+            search_params = {'query': f'"{hotel_name}" "{destination}" hotel', 'key': self.google_api_key, 'fields': 'photos,place_id'}
+            search_response = requests.get(search_url, params=search_params, timeout=15)
+            if search_response.status_code == 200 and (search_data := search_response.json()).get('results'):
+                place_id = search_data['results'][0].get('place_id')
+                details_url = "https://maps.googleapis.com/maps/api/place/details/json"
+                details_params = {'place_id': place_id, 'fields': 'photos', 'key': self.google_api_key}
+                details_response = requests.get(details_url, params=details_params, timeout=15)
+                if details_response.status_code == 200:
+                    photos = details_response.json().get('result', {}).get('photos', [])
+                    return [f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={p.get('photo_reference')}&key={self.google_api_key}" for p in photos if p.get('photo_reference')]
+            return []
+        except Exception as e:
+            print(f"❌ Erreur API Photos: {e}")
+            return []
+
+    def get_real_hotel_reviews(self, hotel_name, destination):
+        if not self.google_api_key: return {'reviews': [], 'rating': 0, 'total_reviews': 0}
+        try:
+            search_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+            search_params = {'query': f'"{hotel_name}" "{destination}" hotel', 'key': self.google_api_key}
+            search_response = requests.get(search_url, params=search_params, timeout=15)
+            if search_response.status_code == 200 and (search_data := search_response.json()).get('results'):
+                place_id = search_data['results'][0].get('place_id')
+                details_url = "https://maps.googleapis.com/maps/api/place/details/json"
+                details_params = {'place_id': place_id, 'fields': 'reviews,rating,user_ratings_total', 'key': self.google_api_key, 'language': 'fr'}
+                details_response = requests.get(details_url, params=details_params, timeout=15)
+
+                if details_response.status_code == 200 and (result := details_response.json().get('result', {})):
+                    all_reviews = result.get('reviews', [])
+                    sorted_reviews = sorted(all_reviews, key=lambda r: (r.get('rating', 0), r.get('time', 0)), reverse=True)
+                    formatted_reviews = [
+                        {
+                            'rating': '⭐' * r.get('rating', 0), 
+                            'author': r.get('author_name', 'Anonyme'), 
+                            'text': r.get('text', '')[:400] + '...', 
+                            'date': r.get('relative_time_description', '')
+                        } 
+                        for r in sorted_reviews if r.get('rating', 0) >= 4
+                    ]
+                    total_reviews_count = result.get('user_ratings_total', 0)
+                    return {
+                        'reviews': formatted_reviews, 
+                        'rating': result.get('rating', 0), 
+                        'total_reviews': total_reviews_count
+                    }
+            return {'reviews': [], 'rating': 0, 'total_reviews': 0}
+        except Exception as e:
+            print(f"❌ Erreur API Reviews: {e}")
+            return {'reviews': [], 'rating': 0, 'total_reviews': 0}
+
+    def get_real_youtube_videos(self, hotel_name, destination):
+        if not self.google_api_key: return []
+        try:
+            youtube_url = "https://www.googleapis.com/youtube/v3/search"
+            youtube_params = {'part': 'snippet', 'q': f'"{hotel_name}" "{destination}" hotel review tour', 'type': 'video', 'maxResults': 4, 'order': 'relevance', 'key': self.google_api_key}
+            youtube_response = requests.get(youtube_url, params=youtube_params, timeout=15)
+            if youtube_response.status_code == 200:
+                return [{'id': item['id']['videoId'], 'title': item['snippet']['title']} for item in youtube_response.json().get('items', []) if item.get('id', {}).get('videoId')]
+            return []
+        except Exception as e:
+            print(f"❌ Erreur API YouTube: {e}")
+            return []
+
+    def get_attraction_image(self, attraction_name, destination):
+        if not self.google_api_key: return None
+        print(f"ℹ️ Recherche d'une image réelle pour : {attraction_name} à {destination}")
+        try:
+            search_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+            search_params = {'query': f'"{attraction_name}" "{destination}"', 'key': self.google_api_key, 'fields': 'photos'}
+            search_response = requests.get(search_url, params=search_params, timeout=15)
+            if search_response.status_code == 200:
+                search_data = search_response.json()
+                if search_data.get('results') and search_data['results'][0].get('photos'):
+                    photo_reference = search_data['results'][0]['photos'][0].get('photo_reference')
+                    if photo_reference:
+                        return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_reference}&key={self.google_api_key}"
+            return None
+        except Exception as e:
+            print(f"❌ Erreur API Image Attraction: {e}")
+            return None
+
+    def get_real_gemini_attractions_and_restaurants(self, destination):
+        if not self.google_api_key:
+            return {"attractions": [], "restaurants": []}
+        try:
+            model = genai.GenerativeModel('models/gemini-2.5-flash')
+            prompt = f'Donne-moi 8 points d\'intérêt pour {destination} et une sélection de 3 des meilleurs restaurants. Réponds UNIQUEMENT en JSON: {{"attractions": [{{"name": "Nom", "type": "plage|culture|gastronomie|activite"}}], "restaurants": [{{"name": "Nom du restaurant"}}]}}'
+            response = model.generate_content(prompt)
+            response_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+            parsed_data = json.loads(response_text)
+            return parsed_data
+        except Exception as e:
+            print(f"❌ Erreur API Gemini: {e}")
+            return {"attractions": [], "restaurants": []}
+
+    def gather_all_real_data(self, hotel_name, destination):
+        gemini_data = self.get_real_gemini_attractions_and_restaurants(destination)
+        attractions_list = gemini_data.get("attractions", [])
+        restaurants_list = gemini_data.get("restaurants", [])
+        
+        attractions_by_category = {'plages': [], 'culture': [], 'gastronomie': [], 'activites': []}
+        for attr in attractions_list:
+            category = attr.get('type', 'activites').replace('activite', 'activites')
+            if category in attractions_by_category:
+                attractions_by_category[category].append(attr.get('name', ''))
+
+        cultural_attraction_image = None
+        if attractions_by_category.get('culture'):
+             if attractions_by_category['culture']: # S'assurer que la liste n'est pas vide
+                first_cultural_attraction = attractions_by_category['culture'][0]
+                cultural_attraction_image = self.get_attraction_image(first_cultural_attraction, destination)
+
+        reviews_data = self.get_real_hotel_reviews(hotel_name, destination)
+
+        return {
+            'photos': self.get_real_hotel_photos(hotel_name, destination),
+            'reviews': reviews_data.get('reviews', []),
+            'hotel_rating': reviews_data.get('rating', 0),
+            'total_reviews': reviews_data.get('total_reviews', 0),
+            'videos': self.get_real_youtube_videos(hotel_name, destination),
+            'attractions': attractions_by_category,
+            'restaurants': restaurants_list,
+            'cultural_attraction_image': cultural_attraction_image
+        }
+
+def generate_travel_page_html(data, real_data, savings, comparison_total, creator_pseudo=None):
+    """Génère le contenu HTML complet de la page de voyage."""
+    
+    # Dictionnaire pour traduire les mois en français
+    mois_fr = {
+        'January': 'janvier', 'February': 'février', 'March': 'mars', 'April': 'avril',
+        'May': 'mai', 'June': 'juin', 'July': 'juillet', 'August': 'août',
+        'September': 'septembre', 'October': 'octobre', 'November': 'novembre', 'December': 'décembre'
     }
     
-    def __init__(self, agency_config: Dict[str, Any]) -> None:
-        """
-        Initialise le moteur de templates
-        
-        Args:
-            agency_config: Configuration de l'agence (nom, couleurs, logo, etc.)
-        """
-        self.agency_config = agency_config
-        self.primary_color = agency_config.get('primary_color', '#3B82F6')
-        self.agency_name = agency_config.get('name', 'Agence de Voyages')
-        self.logo_url = agency_config.get('logo_url', '')
-        self.contact_email = agency_config.get('contact_email', '')
-        self.contact_phone = agency_config.get('contact_phone', '')
+    hotel_name_full = data.get('hotel_name', '')
+    hotel_name_parts = hotel_name_full.split(',')
+    display_hotel_name = hotel_name_parts[0].strip()
+    display_address = ', '.join(hotel_name_parts[1:]).strip() if len(hotel_name_parts) > 1 else data.get('destination', '')
+
+    # Formater les dates en français
+    date_start_obj = datetime.strptime(data['date_start'], '%Y-%m-%d')
+    date_start_en = date_start_obj.strftime('%d %B %Y')
+    date_start = date_start_en
+    for eng, fr in mois_fr.items():
+        date_start = date_start.replace(eng, fr)
     
-    def render_trip_template(self, trip_data: Dict[str, Any], 
-                           template_type: str = 'standard',
-                           style: Optional[str] = 'classic') -> str:
-        """
-        Génère le HTML complet de la fiche de voyage
-        
-        Args:
-            trip_data: Toutes les données du voyage (form_data + api_data)
-            template_type: Type de template ('standard' ou 'day_trip')
-            style: Style du template ('classic', 'modern', 'luxury')
-            
-        Returns:
-            HTML complet de la fiche
-        """
-        
-        # Sélectionner la méthode de rendu selon le style
-        render_method = getattr(self, f'_{self.TEMPLATES.get(style, "template_classic")}', None)
-        
-        if not render_method:
-            render_method = self._template_classic
-        
-        # Générer le HTML selon le type de voyage
-        if template_type == 'day_trip':
-            return self._render_day_trip(trip_data, render_method)
+    date_end_obj = datetime.strptime(data['date_end'], '%Y-%m-%d')
+    date_end_en = date_end_obj.strftime('%d %B %Y')
+    date_end = date_end_en
+    for eng, fr in mois_fr.items():
+        date_end = date_end.replace(eng, fr)
+    stars = "⭐" * int(data.get('stars') or 0)
+    num_people = int(data.get('num_people') or 2)
+    num_children = int(data.get('num_children') or 0)
+    
+    # Construction du texte pour le nombre de personnes/enfants
+    if num_children > 0:
+        people_text = f"{num_people} personne{'s' if num_people > 1 else ''}"
+        children_text = f"{num_children} enfant{'s' if num_children > 1 else ''}"
+        price_for_text = f"pour {people_text} + {children_text}"
+    else:
+        price_for_text = f"pour {num_people} personnes" if num_people > 1 else "pour 1 personne"
+    
+    your_price = int(data.get('pack_price') or 0)
+    # N'afficher le prix par personne que s'il n'y a pas d'enfants
+    price_per_person_text = ''
+    if num_children == 0 and num_people > 0:
+        price_per_person_text = f'<p class="text-sm font-light mt-1">soit {round(your_price / num_people)} € par personne</p>'
+    
+    is_ultra_budget = data.get('is_ultra_budget', False)
+
+    cancellation_html = ""
+    flight_price = int(data.get('flight_price') or 0)
+    if data.get('has_cancellation') == 'on' and data.get('cancellation_date'):
+        if flight_price > 0:
+            cancellation_html = f"""
+            <p class="text-xs font-light mt-1 text-center">✓ Annulation gratuite de l'hôtel jusqu'au {data.get("cancellation_date")}</p>
+            <p class="text-xs font-bold text-orange-800 mt-1 text-center">Les vols ({flight_price} €) ne sont pas remboursables.</p>
+            """
         else:
-            return self._render_standard_trip(trip_data, render_method)
+            cancellation_html = f'<p class="text-xs font-light mt-1 text-center">✓ Annulation gratuite jusqu\'au {data.get("cancellation_date")}</p>'
+
+    instagram_button_html = ""
+    instagram_input = data.get('instagram_handle', '').strip()
+    if instagram_input:
+        match = re.search(r'(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9_.-]+)', instagram_input)
+        username = match.group(1) if match else instagram_input.lstrip('@')
+        if username:
+            instagram_url = f"https://www.instagram.com/{username}"
+            instagram_button_html = f'''
+            <a href="{instagram_url}" target="_blank" class="block bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:opacity-90 text-white font-bold py-3 px-6 rounded-full text-center" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.9 3.9 0 0 0-1.417.923A3.9 3.9 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.703.01 5.555 0 5.827 0 8s.01 2.444.048 3.297c.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.297-.048c.852-.04 1.433-.174 1.942-.372.526-.205.972-.478 1.417-.923.445-.444.718-.891.923-1.417.198-.51.333-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.444-.048-3.297c-.04-.852-.174-1.433-.372-1.942a3.9 3.9 0 0 0-.923-1.417A3.9 3.9 0 0 0 13.24.42c-.51-.198-1.09-.333-1.942-.372C10.445.01 10.173 0 8 0M8 4.865a3.135 3.135 0 1 0 0 6.27 3.135 3.135 0 0 0 0-6.27m0 5.143a2.008 2.008 0 1 1 0-4.016 2.008 2.008 0 0 1 0 4.016m6.406-4.848a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5"/></svg>
+                Voir sur Instagram
+            </a>
+            '''
+
+    city_name = data.get('destination', '').split(',')[0].strip()
+    exclusive_services_html = f'<div class="p-4 mt-4 rounded-lg border-2 border-blue-200 bg-blue-50"><h4 class="font-bold text-blue-800 mb-2">Nos Services additionnels offerts</h4><p class="text-sm text-gray-700">{data.get("exclusive_services", "").strip().replace(chr(10), "<br>")}</p></div>' if data.get('exclusive_services', '').strip() else ""
     
-    def _render_standard_trip(self, trip_data: Dict[str, Any], render_method) -> str:
-        """
-        Génère une fiche pour un séjour standard
-        
-        Args:
-            trip_data: Données du voyage
-            render_method: Méthode de rendu selon le style
-            
-        Returns:
-            HTML de la fiche
-        """
-        form_data = trip_data.get('form_data', {})
-        api_data = trip_data.get('api_data', {})
-        
-        # Préparer les données pour le template
-        context = {
-            'agency': self.agency_config,
-            'trip': {
-                'destination': form_data.get('destination', ''),
-                'hotel_name': form_data.get('hotel_name', ''),
-                'dates': {
-                    'start': form_data.get('date_start', ''),
-                    'end': form_data.get('date_end', ''),
-                    'duration': form_data.get('estimated_duration', 0)
-                },
-                'transport': form_data.get('transport_type', ''),
-                'meal_plan': form_data.get('meal_plan', ''),
-                'stars': form_data.get('stars', 3),
-                'price': form_data.get('pack_price', 0),
-                'num_people': form_data.get('num_people', 2),
-                'activities': form_data.get('activities', [])
-            },
-            'enriched': {
-                'photos': api_data.get('photos', []),
-                'videos': api_data.get('videos', []),
-                'attractions': api_data.get('attractions', {}).get('nearby', []),
-                'reviews': api_data.get('reviews_summary', {}),
-                'destination_info': api_data.get('destination_info', {}),
-                'hotel_info': api_data.get('hotel_info', {})
-            },
-            'pricing': {
-                'margin': trip_data.get('margin', 0),
-                'savings': trip_data.get('savings', 0)
-            }
-        }
-        
-        return render_method(context, 'standard')
+    flight_text_html = f'<div class="flex justify-between"><span>Vol {data.get("departure_city", "").split(",")[0]} ↔ {data.get("arrival_airport", data["destination"]).split(",")[0]}</span><span class="font-semibold">{flight_price}€</span></div>' if flight_price > 0 else ""
+    flight_inclusion_html = f'<div class="flex items-center"><div class="feature-icon bg-blue-500"><i class="fas fa-plane"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Vol {data.get("departure_city", "").split(",")[0]} ↔ {data.get("arrival_airport", data["destination"]).split(",")[0]}</h4><p class="text-gray-600 text-xs">Aller-retour inclus</p></div></div>' if flight_price > 0 else ""
     
-    def _render_day_trip(self, trip_data: Dict[str, Any], render_method) -> str:
-        """
-        Génère une fiche pour une excursion d'un jour
-        
-        Args:
-            trip_data: Données du voyage
-            render_method: Méthode de rendu selon le style
-            
-        Returns:
-            HTML de la fiche
-        """
-        form_data = trip_data.get('form_data', {})
-        api_data = trip_data.get('api_data', {})
-        
-        # Préparer les données pour le template
-        context = {
-            'agency': self.agency_config,
-            'trip': {
-                'destination': form_data.get('destination', ''),
-                'departure_time': form_data.get('departure_time', '08:00'),
-                'return_time': form_data.get('return_time', '20:00'),
-                'departure_address': form_data.get('bus_departure_address', ''),
-                'transport': 'autocar',  # Toujours autocar pour excursion
-                'price': form_data.get('pack_price', 0),
-                'activities': form_data.get('activities', []),
-                'program': form_data.get('program', [])
-            },
-            'enriched': {
-                'photos': api_data.get('photos', []),
-                'videos': api_data.get('videos', []),
-                'attractions': api_data.get('attractions', {}).get('nearby', []),
-                'destination_info': api_data.get('destination_info', {})
-            },
-            'pricing': {
-                'margin': trip_data.get('margin', 0),
-                'savings': trip_data.get('savings', 0)
-            }
-        }
-        
-        return render_method(context, 'day_trip')
+    baggage_option = data.get('baggage_type', 'bagages 10 kilos')
+    baggage_inclusion_html = ''
+    if is_ultra_budget and baggage_option == 'Pas de bagages':
+        baggage_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-gray-400"><i class="fas fa-suitcase"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Bagages à main uniquement</h4><p class="text-gray-600 text-xs">Pas de bagages cabine</p></div></div>'
+    elif baggage_option == 'bagages 10 kilos':
+        baggage_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-red-500"><i class="fas fa-suitcase"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Bagage 10 kilos</h4><p class="text-gray-600 text-xs">1 bagage inclus par personne en cabine</p></div></div>'
+    elif baggage_option == 'Bagage 20 kilos':
+        baggage_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-red-500"><i class="fas fa-suitcase-rolling"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Bagage 20 kilos</h4><p class="text-gray-600 text-xs">1 bagage en soute inclus par personne</p></div></div>'
+    elif baggage_option == 'bagages 10 kilos + 1x 20 kilos':
+        baggage_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-red-500"><i class="fas fa-suitcase-rolling"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Bagages 10 kilos + 1x 20 kilos</h4><p class="text-gray-600 text-xs">1 bagage 10 kilos inclus par personne en cabine et un bagage 20 kilo en soute</p></div></div>'
+    elif baggage_option == 'Pas de bagages':
+        baggage_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-gray-400"><i class="fas fa-suitcase"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Pas de bagages</h4><p class="text-gray-600 text-xs">Peuvent être ajouté en option</p></div></div>'
+
+    transfer_cost = int(data.get('transfer_cost') or 0)
+    transfer_text_html = f'<div class="flex justify-between"><span>+ Transferts</span><span class="font-semibold">~{transfer_cost}€</span></div>' if transfer_cost > 0 else ""
+    transfer_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-green-500"><i class="fas fa-bus"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Transfert aéroport ↔ hôtel</h4><p class="text-gray-600 text-xs">Prise en charge complète</p></div></div>' if transfer_cost > 0 else ""
+
+    surcharge_cost = int(data.get('surcharge_cost') or 0)
+    surcharge_text_html = f'<div class="flex justify-between"><span>+ Surcoût {data.get("surcharge_type", "")}</span><span class="font-semibold">~{surcharge_cost}€</span></div>' if surcharge_cost > 0 else ""
     
-    def _template_classic(self, context: Dict[str, Any], trip_type: str) -> str:
-        """
-        Template Classic - Style traditionnel et épuré
-        
-        Args:
-            context: Contexte avec toutes les données
-            trip_type: Type de voyage
-            
-        Returns:
-            HTML complet
-        """
-        
-        # CSS du template classic
-        css = f"""
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            
-            body {{
-                font-family: 'Georgia', serif;
-                line-height: 1.6;
-                color: #333;
-                background: #fff;
-            }}
-            
-            .header {{
-                background: linear-gradient(135deg, {self.primary_color}, {self._darken_color(self.primary_color)});
-                color: white;
-                padding: 3rem 2rem;
-                text-align: center;
-            }}
-            
-            .header h1 {{
-                font-size: 2.5rem;
-                margin-bottom: 0.5rem;
-            }}
-            
-            .header .subtitle {{
-                font-size: 1.2rem;
-                opacity: 0.9;
-            }}
-            
-            .container {{
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 2rem;
-            }}
-            
-            .section {{
-                margin-bottom: 3rem;
-                padding: 2rem;
-                background: #f8f9fa;
-                border-radius: 10px;
-            }}
-            
-            .section h2 {{
-                color: {self.primary_color};
-                margin-bottom: 1.5rem;
-                font-size: 1.8rem;
-                border-bottom: 2px solid {self.primary_color};
-                padding-bottom: 0.5rem;
-            }}
-            
-            .photos-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 1.5rem;
-                margin-top: 2rem;
-            }}
-            
-            .photo-card img {{
-                width: 100%;
-                height: 250px;
-                object-fit: cover;
-                border-radius: 10px;
-            }}
-            
-            .info-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 2rem;
-                margin-top: 2rem;
-            }}
-            
-            .info-item {{
-                background: white;
-                padding: 1.5rem;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }}
-            
-            .info-item .label {{
-                font-weight: bold;
-                color: #666;
-                margin-bottom: 0.5rem;
-            }}
-            
-            .info-item .value {{
-                font-size: 1.1rem;
-                color: #333;
-            }}
-            
-            .price-box {{
-                background: {self.primary_color};
-                color: white;
-                padding: 2rem;
-                border-radius: 10px;
-                text-align: center;
-                margin: 2rem 0;
-            }}
-            
-            .price-box .amount {{
-                font-size: 3rem;
-                font-weight: bold;
-            }}
-            
-            .price-box .per-person {{
-                font-size: 1rem;
-                opacity: 0.9;
-            }}
-            
-            .attractions {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 1.5rem;
-            }}
-            
-            .attraction-card {{
-                background: white;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            }}
-            
-            .attraction-card img {{
-                width: 100%;
-                height: 150px;
-                object-fit: cover;
-            }}
-            
-            .attraction-card .content {{
-                padding: 1rem;
-            }}
-            
-            .attraction-card .name {{
-                font-weight: bold;
-                margin-bottom: 0.5rem;
-            }}
-            
-            .attraction-card .rating {{
-                color: #f59e0b;
-            }}
-            
-            .program-timeline {{
-                position: relative;
-                padding-left: 3rem;
-            }}
-            
-            .program-item {{
-                position: relative;
-                padding-bottom: 2rem;
-            }}
-            
-            .program-item::before {{
-                content: '';
-                position: absolute;
-                left: -2rem;
-                top: 0;
-                width: 12px;
-                height: 12px;
-                background: {self.primary_color};
-                border-radius: 50%;
-            }}
-            
-            .program-item::after {{
-                content: '';
-                position: absolute;
-                left: -1.94rem;
-                top: 12px;
-                width: 2px;
-                height: calc(100% - 12px);
-                background: #ddd;
-            }}
-            
-            .program-item:last-child::after {{
-                display: none;
-            }}
-            
-            .program-time {{
-                font-weight: bold;
-                color: {self.primary_color};
-                margin-bottom: 0.5rem;
-            }}
-            
-            .footer {{
-                background: #333;
-                color: white;
-                padding: 2rem;
-                text-align: center;
-                margin-top: 3rem;
-            }}
-            
-            .footer .contact {{
-                margin-top: 1rem;
-            }}
-            
-            .footer .contact a {{
-                color: white;
-                text-decoration: none;
-                margin: 0 1rem;
-            }}
-            
-            @media print {{
-                .section {{
-                    break-inside: avoid;
-                }}
-            }}
-        """
-        
-        # Générer le contenu selon le type
-        if trip_type == 'day_trip':
-            content = self._generate_day_trip_content(context)
+    pension_html = ''
+    if data.get('surcharge_type') != 'Logement seul':
+        pension_html = f'<div class="flex items-center"><div class="feature-icon bg-yellow-500"><i class="fas fa-utensils"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">{data.get("surcharge_type", "Pension complète")}</h4><p class="text-gray-600 text-xs">Inclus dans le forfait</p></div></div>'
+
+    car_rental_cost = int(data.get('car_rental_cost') or 0)
+    car_rental_text_html = f'<div class="flex justify-between"><span>+ Voiture de location (sans franchise)</span><span class="font-semibold">~{car_rental_cost}€</span></div>' if car_rental_cost > 0 else ""
+    
+    car_rental_inclusion_html = ''
+    if car_rental_cost > 0:
+        if is_ultra_budget:
+            car_rental_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-gray-500"><i class="fas fa-car"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Voiture de location</h4><p class="text-gray-600 text-xs">Franchise à partir de 1100€</p></div></div>'
         else:
-            content = self._generate_standard_content(context)
+            car_rental_inclusion_html = '<div class="flex items-center"><div class="feature-icon bg-gray-500"><i class="fas fa-car"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Voiture de location (sans franchise)</h4><p class="text-gray-600 text-xs">Explorez à votre rythme</p></div></div>'
+
+    pricing_block_html = ''
+    if is_ultra_budget:
+        conditions = []
+        if flight_price == 0:
+            conditions.append("<li>- Pas de vols inclus</li>")
+        else:
+            conditions.append("<li>- Pas de bagage cabine</li>")
         
-        # HTML complet
-        html = f"""
-<!DOCTYPE html>
+        if car_rental_cost > 0:
+            conditions.append("<li>- Caution pour la voiture de location</li>")
+        elif transfer_cost == 0:
+            conditions.append("<li>- Transfert aéroport non compris</li>")
+
+        if not (data.get('has_cancellation') == 'on' and data.get('cancellation_date')):
+            conditions.append("<li>- Hôtel non remboursable</li>")
+        else:
+            conditions.append(f"<li>- Hôtel remboursable jusqu\'au {data.get('cancellation_date')}</li>")
+
+        conditions.append("<li>- Horaires des vols non optimisés</li>")
+        
+        conditions_list_html = "".join(conditions)
+
+        ultra_budget_warning_html = f'''
+        <div class="mt-4 p-3 rounded-lg border-2 border-red-200 bg-red-50 text-sm">
+            <h4 class="font-bold text-red-800 mb-2">⚠️ Tarif minimum avec les conditions suivantes :</h4>
+            <ul class="text-xs text-red-700 list-none pl-0">{conditions_list_html}</ul>
+            <p class="text-xs text-blue-700 mt-2">💡 Possibilité d'ajouter des services à la carte sur demande.</p>
+        </div>
+        '''
+        pricing_block_html = f"""
+        <div class="instagram-card p-6">
+            <h3 class="section-title text-xl mb-4">Prix Ultra Budget</h3>
+            <div class="p-4 rounded-lg bg-green-600 text-white"><h4 class="font-bold text-center mb-2">Notre Offre</h4><div class="text-center text-2xl font-bold">{your_price} €</div>{cancellation_html}</div>
+            {ultra_budget_warning_html}
+        </div>
+        """
+    else:
+        # Vérifier si l'économie est inférieure à 45€
+        if savings < 45:
+            # Si économie < 45€ et qu'il y a des services additionnels, afficher un bloc simplifié
+            if data.get('exclusive_services', '').strip():
+                pricing_block_html = f"""
+                <div class="instagram-card p-6">
+                    <h3 class="section-title text-xl mb-4">Nos services exclusifs inclus</h3>
+                    {exclusive_services_html}
+                    <div class="p-4 rounded-lg bg-green-600 text-white mt-4"><h4 class="font-bold text-center mb-2">Notre Offre</h4><div class="text-center text-2xl font-bold">{your_price} €</div>{cancellation_html}</div>
+                </div>
+                """
+            else:
+                # Si économie < 45€ et pas de services additionnels, ne pas afficher le bloc
+                pricing_block_html = ""
+        else:
+            # Économie >= 45€, afficher le bloc complet "Pourquoi nous choisir ?"
+            comparison_block = f"""
+                <div class="flex justify-between"><span>Hôtel ({data.get('stars')}⭐)</span><span class="font-semibold">{data.get('hotel_b2c_price', 'N/A')} €</span></div>
+                {flight_text_html}{transfer_text_html}{car_rental_text_html}{surcharge_text_html}
+                <hr class="my-3"><div class="flex justify-between text-base font-bold text-red-600"><span>TOTAL ESTIMÉ</span><span>{comparison_total} €</span></div>
+            """
+            pricing_block_html = f"""
+            <div class="instagram-card p-6">
+                <h3 class="section-title text-xl mb-4">Pourquoi nous choisir ?</h3>
+                <div class="p-4 rounded-lg border-2 border-red-200 bg-red-50 mb-4"><h4 class="font-bold text-center mb-2">Prix estimé ailleurs</h4><div class="text-sm space-y-1">{comparison_block}</div></div>{exclusive_services_html}
+                <div class="p-4 rounded-lg bg-green-600 text-white"><h4 class="font-bold text-center mb-2">Notre Offre</h4><div class="text-center text-2xl font-bold">{your_price} €</div>{cancellation_html}</div>
+                <div class="economy-highlight">💰 Vous économisez {savings} € !</div>
+            </div>
+            """
+    
+    total_photos = len(real_data['photos']) if real_data.get('photos') else 0
+    image_gallery = "".join([f'<div class="image-item"><img src="{url}" alt="Photo de {data["hotel_name"]}"></div>' for url in real_data.get('photos', [])[:6]]) or '<p>Aucune photo disponible.</p>'
+    more_photos_button = f'<div class="text-center mt-4"><button id="voirPlusPhotos" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-full transition-colors">📸 Voir plus de photos ({total_photos} au total)</button></div>' if total_photos > 6 else ""
+    modal_all_photos = "".join([f'<img src="{url}" alt="Photo {i+1} de {data["hotel_name"]}" class="modal-photo">' for i, url in enumerate(real_data.get('photos', []))])
+
+    video_html_block = ""
+    if real_data.get('videos'):
+        embed_url = f"https://www.youtube.com/embed/{real_data['videos'][0]['id']}"
+        video_title = real_data['videos'][0]['title']
+        video_html_block = f"""<div id="video-section-wrapper" class="instagram-card p-6"><h3 class="section-title text-xl mb-4">Vidéo</h3><div><h4 class="font-semibold mb-2">Visite de l'hôtel</h4><div class="video-container aspect-w-16 aspect-h-9"><iframe src="{embed_url}" title="{video_title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="w-full h-full rounded-lg"></iframe></div></div></div>"""
+
+    reviews_section = "".join([f'<div class="bg-gray-50 p-4 rounded-lg"><div><span class="font-semibold">{r["author"]}</span> <span class="text-yellow-500">{r["rating"]}</span> <span class="text-gray-500 text-sm float-right">{r.get("date", "")}</span></div><p class="mt-2 text-gray-700">"{r["text"]}"</p></div>' for r in real_data.get('reviews', [])])
+
+    destination_section = ""
+    if real_data.get('cultural_attraction_image'):
+        cultural_attraction_name = real_data.get('attractions', {}).get('culture', [''])[0] if real_data.get('attractions', {}).get('culture') else ''
+        if cultural_attraction_name:
+            destination_section += f'<div class="mb-6 rounded-lg overflow-hidden shadow-lg"><img src="{real_data["cultural_attraction_image"]}" alt="Image de {cultural_attraction_name}" class="w-full h-48 object-cover"><div class="p-4 bg-gray-50"><h4 class="font-bold text-gray-800">Incontournable : {cultural_attraction_name}</h4></div></div>'
+
+    if real_data.get('restaurants'):
+        restaurants_list_items = "".join([f'<li class="flex items-center"><i class="fas fa-utensils text-yellow-500 mr-3"></i><span>{resto.get("name")}</span></li>' for resto in real_data['restaurants']])
+        destination_section += f'<div class="mb-6"><h4 class="font-semibold text-lg mb-3 text-gray-800">🍴 Top 3 Restaurants</h4><ul class="space-y-2 text-gray-700">{restaurants_list_items}</ul></div>'
+
+    icons = {'plages': 'fa-water', 'culture': 'fa-monument', 'gastronomie': 'fa-utensils', 'activites': 'fa-map-signs'}
+    colors = {'plages': 'bg-blue-500', 'culture': 'bg-purple-500', 'gastronomie': 'bg-green-500', 'activites': 'bg-orange-500'}
+    categories = {'plages': 'Plages & Nature', 'culture': 'Culture & Histoire', 'gastronomie': 'Gastronomie Locale', 'activites': 'Activités & Loisirs'}
+    
+    flat_attractions = []
+    for category, attractions in real_data.get('attractions', {}).items():
+        start_index = 1 if category == 'culture' and real_data.get('cultural_attraction_image') else 0
+        for attraction_name in attractions[start_index:]:
+            flat_attractions.append({'name': attraction_name, 'category': category})
+
+    if flat_attractions:
+        other_attractions_items = "".join([f'<div class="flex items-start space-x-3"><div class="feature-icon {colors.get(attr["category"], "bg-gray-500")}" style="width: 35px; height: 35px; font-size: 16px; flex-shrink: 0;"><i class="fas {icons.get(attr["category"], "fa-question")}"></i></div><div><h5 class="font-semibold text-sm text-gray-800">{attr["name"]}</h5><p class="text-gray-500 text-xs">{categories.get(attr["category"])}</p></div></div>' for attr in flat_attractions[:4]])
+        destination_section += f'<div><h4 class="font-semibold text-lg mb-3 text-gray-800">À explorer également</h4><div class="space-y-4">{other_attractions_items}</div></div>'
+
+    creator_html = f'<p class="text-sm mt-3">Voyage proposé par <strong>{creator_pseudo}</strong></p>' if creator_pseudo else ""
+
+    footer_html = f"""
+        <div class="instagram-card p-6 bg-blue-500 text-white text-center">
+            <h3 class="text-2xl font-bold mb-2">🌟 Réservez votre évasion !</h3>
+            <p>Les places sont très limitées pour cette offre exclusive. Pour garantir votre place :</p>
+            {creator_html}
+            <div class="mt-4 flex flex-col sm:flex-row justify-center gap-4">
+                <a href="tel:+32488433344" class="block w-full sm:w-auto bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full">📞 Appeler maintenant</a>
+                <a href="mailto:infos@voyages-privileges.be" class="block w-full sm:w-auto bg-white hover:bg-gray-100 text-blue-500 font-bold py-3 px-6 rounded-full">✉️ Envoyer un email</a>
+            </div>
+        </div>
+        <div class="instagram-card p-6 text-center">
+             <h3 class="text-xl font-semibold mb-2">🗓️ Voyagez à vos dates</h3>
+             <p class="text-gray-700">Les dates ou la durée de ce séjour ne vous conviennent pas ? Contactez-nous ! Nous pouvons vous créer une offre sur mesure.</p>
+             <p class="text-sm text-gray-500 mt-2">Notez que le tarif concurrentiel de cette offre est spécifique à ces dates et conditions.</p>
+        </div>
+        
+        <div class="instagram-card p-6 text-center">
+            <a href="https://www.voyages-privileges.be" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full transition-colors" style="display: inline-block;">
+                Toutes nos offres
+            </a>
+        </div>
+
+        <div class="instagram-card p-6 text-center">
+            <h3 class="text-xl font-semibold mb-4">🌐 Partager cette offre</h3>
+            <p class="text-gray-700 mb-4">Faites découvrir cette offre à vos proches !</p>
+            <div class="flex justify-center gap-4 flex-wrap">
+                <a href="#" 
+                   id="shareWhatsApp"
+                   class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/>
+                    </svg>
+                    WhatsApp
+                </a>
+                <a href="#" 
+                   id="shareFacebook"
+                   class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0-.002 3.603-.002 8.05c0 4.017 2.926 7.347 6.75 7.951v-5.625h-2.03V8.05H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951z"/>
+                    </svg>
+                    Facebook
+                </a>
+                <button 
+                   id="copyLink"
+                   class="flex items-center gap-2 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 hover:opacity-90 text-white font-semibold py-3 px-6 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1.002 1.002 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4.018 4.018 0 0 1-.128-1.287z"/>
+                        <path d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243L6.586 4.672z"/>
+                    </svg>
+                    Copier le lien
+                </button>
+            </div>
+            <p id="copyMessage" class="text-sm text-green-600 mt-2 hidden">✓ Lien copié dans le presse-papier !</p>
+        </div>
+
+        <div class="instagram-card p-6 text-center">
+            <h3 class="text-xl font-semibold mb-4">📞 Contact & Infos</h3>
+            <img src="https://static.wixstatic.com/media/5ca515_449af35c8bea462986caf4fd28e02398~mv2.png" alt="Logo Voyages Privilèges" class="h-12 mx-auto mb-4">
+            <p class="text-gray-800">📍 Rue Philippe Monnoyer 21, 6180 Courcelles</p>
+            <p class="text-gray-800 my-2">📞 <a href="tel:+32488433344" class="text-blue-600">+32 488 43 33 44</a></p>
+            <p class="text-gray-800">✉️ <a href="mailto:infos@voyages-privileges.be" class="text-blue-600">infos@voyages-privileges.be</a></p>
+            <hr class="my-4">
+            <p class="text-xs text-gray-500">SRL RIDEA (OldiBike)<br>Numéro de société : 1024.916.054 - RC Exploitation : 99730451</p>
+        </div>
+    """
+    
+    story_card_style = "background: linear-gradient(135deg, #FECACA 0%, #F87171 100%);" if is_ultra_budget else "background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);"
+
+    html_template = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{context['trip']['destination']} - {self.agency_name}</title>
-    <style>{css}</style>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Voyages Privilèges - {display_hotel_name}</title>
+    <link href="https://cdn.tailwindcss.com/2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=aspect-ratio"></script>
+    <style>
+        body {{ font-family: 'Poppins', sans-serif; }} .section-title {{ font-family: 'Playfair Display', serif; }}
+        .main-container {{ max-width: 600px; margin: auto; padding: 10px; }}
+        .instagram-card {{ background: white; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); overflow: hidden; }}
+        .story-card, .instagram-card + .instagram-card {{ margin-top: 20px; }}
+        .story-card {{ {story_card_style} border-radius: 25px; padding: 25px; color: white; text-align: center; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3); margin-top: 0; }}
+        .image-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }}
+        .image-item img {{ width: 100%; height: 200px; object-fit: cover; transition: transform 0.3s ease; border-radius: 15px;}}
+        .reviews-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
+        .economy-highlight {{ background: linear-gradient(45deg, #ffd700, #ffb347); color: #333; padding: 15px; border-radius: 15px; text-align: center; margin-top: 20px; font-weight: bold;}}
+        .feature-icon {{ width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; flex-shrink: 0; }}
+        .modal-photos {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; overflow-y: auto; padding: 20px; }}
+        .modal-photos-content {{ max-width: 800px; margin: 0 auto; padding-top: 60px; }}
+        .close-photos {{ position: fixed; top: 20px; right: 30px; font-size: 40px; color: white; cursor: pointer; z-index: 1001; font-weight: bold; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); border-radius: 50%; }}
+        .close-photos:hover {{ background: rgba(255,255,255,0.2); }}
+        .modal-photo {{ width: 100%; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }}
+        .photo-counter {{ position: fixed; top: 20px; left: 30px; color: white; background: rgba(0,0,0,0.5); padding: 10px 15px; border-radius: 20px; font-weight: bold; z-index: 1001; }}
+        
+        /* Tablette (640px - 1023px) */
+        @media (min-width: 640px) and (max-width: 1023px) {{
+            .main-container {{ max-width: 900px; padding: 20px; }}
+        }}
+        
+        /* PC (1024px et plus) - Optimisation large écran */
+        @media (min-width: 1024px) {{
+            .main-container {{ max-width: 1200px; padding: 30px; }}
+            .image-grid {{ grid-template-columns: repeat(3, 1fr); gap: 20px; }}
+            .image-item img {{ height: 250px; }}
+            .reviews-grid {{ grid-template-columns: repeat(2, 1fr); gap: 20px; }}
+            .story-card {{ padding: 40px; }}
+            .instagram-card {{ padding: 30px !important; }}
+        }}
+        
+        @media (max-width: 768px) {{ .close-photos {{ top: 15px; right: 15px; font-size: 30px; width: 40px; height: 40px; }} .photo-counter {{ top: 15px; left: 15px; padding: 8px 12px; font-size: 14px; }} .modal-photos-content {{ padding-top: 80px; padding-left: 10px; padding-right: 10px; }} }}
+    </style>
 </head>
 <body>
-    {content}
+    <div class="main-container">
+        <div style="text-align: center; padding-top: 20px; padding-bottom: 10px;">
+            <img src="https://static.wixstatic.com/media/5ca515_449af35c8bea462986caf4fd28e02398~mv2.png" alt="Logo Voyages Privilèges" style="max-height: 50px; margin: auto;">
+        </div>
+        <div class="story-card">
+            <img src="{real_data.get('photos', [''])[0]}" alt="{data['hotel_name']}" style="width: 100%; height: 256px; object-fit: cover; border-radius: 8px; margin-bottom: 1rem;">
+            <h2 class="text-2xl font-bold">{display_hotel_name} {stars}</h2>
+            <p>📍 {display_address}</p>
+            <p class="mt-4">🗓️ Du {date_start} au {date_end}</p>
+            <div class="text-4xl font-bold mt-2">{your_price} €</div>
+            <p>{price_for_text}</p>{price_per_person_text}
+            {f'<p class="text-sm mt-2">Note Google: {real_data["hotel_rating"]}/5 ({real_data["total_reviews"]} avis)</p>' if real_data.get("hotel_rating", 0) > 0 else ""}
+            <div class="mt-4">{instagram_button_html}</div>
+        </div>
+        <div class="instagram-card p-6">
+            <h3 class="section-title text-xl mb-4">Inclus dans votre séjour</h3>
+            <div class="space-y-5">{flight_inclusion_html}{transfer_inclusion_html}{car_rental_inclusion_html}
+                <div class="flex items-center"><div class="feature-icon bg-purple-500"><i class="fas fa-hotel"></i></div><div class="ml-4"><h4 class="font-semibold text-sm">Hôtel {stars} {display_hotel_name}</h4><p class="text-gray-600 text-xs">Style traditionnel</p></div></div>
+                {pension_html}
+                {baggage_inclusion_html}
+            </div>
+        </div>
+        {pricing_block_html}
+        <div class="instagram-card p-6" id="gallery-section"><h3 class="section-title text-xl mb-4">Galerie de photos</h3><div class="image-grid">{image_gallery}</div>{more_photos_button}</div>
+        <div id="photosModal" class="modal-photos"><span class="close-photos" id="closePhotos">×</span><div class="photo-counter" id="photoCounter">Photo 1 sur {total_photos}</div><div class="modal-photos-content">{modal_all_photos}</div></div>
+        {video_html_block}
+        <div class="instagram-card p-6"><h3 class="section-title text-xl mb-4">Avis des clients</h3><div class="reviews-grid">{reviews_section}</div></div>
+        <div class="instagram-card p-6"><h3 class="section-title text-xl mb-4">Découvrir {city_name}</h3>{destination_section}</div>
+        {footer_html}
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {{
+        // Gestion de la galerie photos
+        const voirPlusBtn = document.getElementById('voirPlusPhotos');
+        const modal = document.getElementById('photosModal');
+        const closeBtn = document.getElementById('closePhotos');
+        const photoCounter = document.getElementById('photoCounter');
+        const modalPhotos = document.querySelectorAll('.modal-photo');
+        if (voirPlusBtn) {{ voirPlusBtn.addEventListener('click', function() {{ if (modal) modal.style.display = 'block'; document.body.style.overflow = 'hidden'; }}); }}
+        function closeModal() {{ if (modal) modal.style.display = 'none'; document.body.style.overflow = 'auto'; }}
+        if (closeBtn) {{ closeBtn.addEventListener('click', closeModal); }}
+        if (modal) {{ modal.addEventListener('click', function(e) {{ if (e.target === modal) {{ closeModal(); }} }}); }}
+        document.addEventListener('keydown', function(e) {{ if (e.key === 'Escape' && modal && modal.style.display === 'block') {{ closeModal(); }} }});
+        if (modalPhotos.length > 0) {{
+            const observer = new IntersectionObserver(function(entries) {{
+                entries.forEach(function(entry) {{
+                    if (entry.isIntersecting) {{
+                        const index = Array.from(modalPhotos).indexOf(entry.target) + 1;
+                        if (photoCounter) {{ photoCounter.textContent = `Photo ${{index}} sur ${{modalPhotos.length}}`; }}
+                    }}
+                }});
+            }}, {{ threshold: 0.5 }});
+            modalPhotos.forEach(function(photo) {{ observer.observe(photo); }});
+        }}
+
+        // Gestion du partage sur les réseaux sociaux
+        const currentUrl = window.location.href;
+        const shareText = 'Découvrez cette superbe offre de voyage : {display_hotel_name} à partir de {your_price}€ ! ';
+        
+        // Bouton WhatsApp
+        const shareWhatsApp = document.getElementById('shareWhatsApp');
+        if (shareWhatsApp) {{
+            shareWhatsApp.addEventListener('click', function(e) {{
+                e.preventDefault();
+                const whatsappUrl = `https://wa.me/?text=${{encodeURIComponent(shareText + currentUrl)}}`;
+                window.open(whatsappUrl, '_blank');
+            }});
+        }}
+        
+        // Bouton Facebook
+        const shareFacebook = document.getElementById('shareFacebook');
+        if (shareFacebook) {{
+            shareFacebook.addEventListener('click', function(e) {{
+                e.preventDefault();
+                const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${{encodeURIComponent(currentUrl)}}`;
+                window.open(facebookUrl, '_blank');
+            }});
+        }}
+        
+        // Bouton Copier le lien
+        const copyLink = document.getElementById('copyLink');
+        const copyMessage = document.getElementById('copyMessage');
+        if (copyLink) {{
+            copyLink.addEventListener('click', function() {{
+                navigator.clipboard.writeText(currentUrl).then(function() {{
+                    if (copyMessage) {{
+                        copyMessage.classList.remove('hidden');
+                        setTimeout(function() {{
+                            copyMessage.classList.add('hidden');
+                        }}, 3000);
+                    }}
+                }}).catch(function(err) {{
+                    console.error('Erreur lors de la copie:', err);
+                }});
+            }});
+        }}
+    }});
+    </script>
 </body>
-</html>
-"""
-        
-        return html
-    
-    def _generate_standard_content(self, context: Dict[str, Any]) -> str:
-        """
-        Génère le contenu HTML pour un séjour standard
-        
-        Args:
-            context: Contexte avec les données
-            
-        Returns:
-            HTML du contenu
-        """
-        trip = context['trip']
-        enriched = context['enriched']
-        
-        # Photos
-        photos_html = ""
-        if enriched['photos']:
-            photos_html = f"""
-            <section class="section">
-                <h2>📸 Photos</h2>
-                <div class="photos-grid">
-                    {' '.join([f'<div class="photo-card"><img src="{p["url"]}" alt="Photo"></div>' for p in enriched['photos'][:6]])}
-                </div>
-            </section>
-            """
-        
-        # Attractions
-        # MODIFIÉ : Correction de la source des attractions
-        attractions_html = ""
-        if enriched.get('attractions'):
-            attractions_items = ""
-            for att in enriched['attractions']:
-                img_html = f'<img src="{att["photo_url"]}" alt="{att["name"]}">' if att.get('photo_url') else '<div style="height:150px;background:#ddd;"></div>'
-                attractions_items += f"""
-                <div class="attraction-card">
-                    {img_html}
-                    <div class="content">
-                        <div class="name">{att['name']}</div>
-                        <div class="rating">{'⭐ ' + str(att.get('rating', '')) if att.get('rating') else ''}</div>
-                    </div>
-                </div>
-                """
-            
-            attractions_html = f"""
-            <section class="section">
-                <h2>🎯 Attractions à proximité</h2>
-                <div class="attractions">
-                    {attractions_items}
-                </div>
-            </section>
-            """
-        
-        # Contenu complet
-        content = f"""
-        <header class="header">
-            <h1>{trip['destination']}</h1>
-            <div class="subtitle">{trip.get('hotel_name', 'Séjour découverte')}</div>
-        </header>
-        
-        <div class="container">
-            <!-- Informations principales -->
-            <section class="section">
-                <h2>📋 Informations du séjour</h2>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <div class="label">📅 Dates</div>
-                        <div class="value">{trip['dates']['start']} au {trip['dates']['end']}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">✈️ Transport</div>
-                        <div class="value">{self._format_transport(trip['transport'])}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">🏨 Hébergement</div>
-                        <div class="value">{'⭐' * trip.get('stars', 3)} {trip.get('hotel_name', 'Hôtel')}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">🍽️ Formule</div>
-                        <div class="value">{self._format_meal_plan(trip.get('meal_plan', ''))}</div>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- Prix -->
-            <div class="price-box">
-                <div class="amount">{trip['price']} €</div>
-                <div class="per-person">par personne</div>
-            </div>
-            
-            {photos_html}
-            
-            {attractions_html}
-            
-            <!-- Contact -->
-            <footer class="footer">
-                <h3>{self.agency_name}</h3>
-                <div class="contact">
-                    <a href="mailto:{self.contact_email}">✉️ {self.contact_email}</a>
-                    <a href="tel:{self.contact_phone}">📞 {self.contact_phone}</a>
-                </div>
-            </footer>
-        </div>
-        """
-        
-        return content
-    
-    def _generate_day_trip_content(self, context: Dict[str, Any]) -> str:
-        """
-        Génère le contenu HTML pour une excursion d'un jour
-        
-        Args:
-            context: Contexte avec les données
-            
-        Returns:
-            HTML du contenu
-        """
-        trip = context['trip']
-        enriched = context['enriched']
-        
-        # Programme de la journée
-        program_html = ""
-        if trip.get('program'):
-            program_items = ""
-            for item in trip['program']:
-                program_items += f"""
-                <div class="program-item">
-                    <div class="program-time">{item.get('time', '')}</div>
-                    <div class="program-activity">{item.get('activity', '')}</div>
-                </div>
-                """
-            
-            program_html = f"""
-            <section class="section">
-                <h2>📅 Programme de la journée</h2>
-                <div class="program-timeline">
-                    {program_items}
-                </div>
-            </section>
-            """
-        
-        # Contenu complet
-        content = f"""
-        <header class="header">
-            <h1>Excursion à {trip['destination']}</h1>
-            <div class="subtitle">Voyage d'un jour en autocar</div>
-        </header>
-        
-        <div class="container">
-            <!-- Informations principales -->
-            <section class="section">
-                <h2>📋 Informations pratiques</h2>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <div class="label">🚌 Départ</div>
-                        <div class="value">{trip['departure_time']} - {trip.get('departure_address', 'À définir')}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">🏁 Retour</div>
-                        <div class="value">{trip['return_time']}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">📍 Destination</div>
-                        <div class="value">{trip['destination']}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="label">🎯 Activités</div>
-                        <div class="value">{', '.join(trip.get('activities', []))}</div>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- Prix -->
-            <div class="price-box">
-                <div class="amount">{trip['price']} €</div>
-                <div class="per-person">tout compris</div>
-            </div>
-            
-            {program_html}
-            
-            <!-- Contact -->
-            <footer class="footer">
-                <h3>{self.agency_name}</h3>
-                <div class="contact">
-                    <a href="mailto:{self.contact_email}">✉️ {self.contact_email}</a>
-                    <a href="tel:{self.contact_phone}">📞 {self.contact_phone}</a>
-                </div>
-            </footer>
-        </div>
-        """
-        
-        return content
-    
-    def _template_modern(self, context: Dict[str, Any], trip_type: str) -> str:
-        """
-        Template Modern - Style contemporain avec animations
-        À implémenter : design plus moderne avec gradients et animations CSS
-        """
-        # Pour l'instant, utilise le template classic
-        return self._template_classic(context, trip_type)
-    
-    def _template_luxury(self, context: Dict[str, Any], trip_type: str) -> str:
-        """
-        Template Luxury - Style premium et élégant
-        À implémenter : design luxueux avec effets visuels sophistiqués
-        """
-        # Pour l'instant, utilise le template classic
-        return self._template_classic(context, trip_type)
-    
-    # ==============================================================================
-    # UTILITAIRES
-    # ==============================================================================
-    
-    def _format_transport(self, transport: str) -> str:
-        """Formate le type de transport"""
-        transports = {
-            'avion': '✈️ Avion',
-            'train': '🚂 Train',
-            'autocar': '🚌 Autocar',
-            'voiture': '🚗 Voiture'
-        }
-        return transports.get(transport, transport.capitalize())
-    
-    def _format_meal_plan(self, meal_plan: str) -> str:
-        """Formate la formule repas"""
-        plans = {
-            'logement_seul': 'Logement seul',
-            'petit_dejeuner': 'Petit-déjeuner',
-            'demi_pension': 'Demi-pension',
-            'pension_complete': 'Pension complète',
-            'all_in': 'All Inclusive'
-        }
-        return plans.get(meal_plan, meal_plan.replace('_', ' ').capitalize())
-    
-    def _darken_color(self, hex_color: str, factor: float = 0.8) -> str:
-        """
-        Assombrit une couleur hexadécimale
-        
-        Args:
-            hex_color: Couleur au format #RRGGBB
-            factor: Facteur d'assombrissement (0-1)
-            
-        Returns:
-            Couleur assombrie
-        """
-        try:
-            # Enlever le #
-            hex_color = hex_color.lstrip('#')
-            
-            # Convertir en RGB
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            
-            # Assombrir
-            r = int(r * factor)
-            g = int(g * factor)
-            b = int(b * factor)
-            
-            # Reconvertir en hex
-            return f'#{r:02x}{g:02x}{b:02x}'
-            
-        except:
-            return '#2563eb'  # Couleur par défaut si erreur
+</html>"""
+    return html_template
 
 
-# ==============================================================================
-# FONCTIONS UTILITAIRES
-# ==============================================================================
-
-def render_trip_template(data: Dict[str, Any], 
-                        template_type: str,
-                        agency_style: str,
-                        agency_config: Dict[str, Any]) -> str:
+# Fonction wrapper pour compatibilité avec app.py
+def render_trip_template(data, template_type, agency_style, agency_config):
     """
-    Point d'entrée pour générer une fiche de voyage
-    
-    Args:
-        data: Données complètes du voyage
-        template_type: 'standard' ou 'day_trip'
-        agency_style: 'classic', 'modern' ou 'luxury'
-        agency_config: Configuration de l'agence
-        
-    Returns:
-        HTML complet de la fiche
+    Wrapper pour rendre compatible avec l'ancien système
     """
-    engine = TemplateEngine(agency_config)
-    return engine.render_trip_template(data, template_type, agency_style)
-
-
-# ==============================================================================
-# TESTS
-# ==============================================================================
-
-def _run_tests():
-    """
-    Tests du Template Engine
-    Lancez : python services/template_engine.py
-    """
+    form_data = data.get('form_data', {})
+    api_data = data.get('api_data', {})
+    savings = data.get('savings', 0)
+    comparison_total = data.get('comparison_total', 0)
     
-    print("\n" + "="*60)
-    print("TEST TEMPLATE ENGINE")
-    print("="*60)
-    
-    # Configuration d'agence de test
-    test_agency_config = {
-        'name': 'Voyages Privilèges',
-        'primary_color': '#3B82F6',
-        'logo_url': 'https://example.com/logo.png',
-        'contact_email': 'contact@voyages-privileges.be',
-        'contact_phone': '+32 488 43 33 44'
-    }
-    
-    # Données de voyage de test
-    test_trip_data = {
-        'form_data': {
-            'destination': 'Rome, Italie',
-            'hotel_name': 'Hotel Colosseo',
-            'date_start': '2025-03-15',
-            'date_end': '2025-03-18',
-            'duration': 3,
-            'transport_type': 'avion',
-            'meal_plan': 'demi_pension',
-            'stars': 4,
-            'pack_price': 500,
-            'num_people': 2,
-            'activities': ['Colisée', 'Vatican', 'Fontaine de Trevi']
-        },
-        'api_data': {
-            'photos': [
-                {'url': 'https://via.placeholder.com/800x600?text=Rome+1'},
-                {'url': 'https://via.placeholder.com/800x600?text=Rome+2'},
-                {'url': 'https://via.placeholder.com/800x600?text=Rome+3'}
-            ],
-            'attractions': [
-                {
-                    'name': 'Colisée',
-                    'rating': 4.7,
-                    'photo_url': 'https://via.placeholder.com/400x300?text=Colosseum'
-                },
-                {
-                    'name': 'Vatican',
-                    'rating': 4.8,
-                    'photo_url': 'https://via.placeholder.com/400x300?text=Vatican'
-                }
-            ]
-        },
-        'margin': 150,
-        'savings': 100
-    }
-    
-    # Test génération template classic
-    print("\n📄 Génération d'une fiche Classic...")
-    html = render_trip_template(
-        test_trip_data,
-        'standard',
-        'classic',
-        test_agency_config
+    return generate_travel_page_html(
+        form_data,
+        api_data,
+        savings,
+        comparison_total,
+        creator_pseudo=None
     )
-    
-    # Sauvegarder le HTML pour test
-    output_file = 'test_fiche_voyage.html'
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(html)
-    
-    print(f"✅ Fiche générée ! Sauvegardée dans {output_file}")
-    print(f"   - Taille: {len(html)} caractères")
-    print(f"   - Style: Classic")
-    print(f"   - Type: Séjour standard")
-    
-    # Test excursion d'un jour
-    test_day_trip = {
-        'form_data': {
-            'destination': 'Bruges',
-            'departure_time': '08:00',
-            'return_time': '20:00',
-            'departure_address': 'Place de la Gare, Bruxelles',
-            'pack_price': 75,
-            'activities': ['Centre historique', 'Canaux', 'Béguinage'],
-            'program': [
-                {'time': '08:00', 'activity': 'Départ de Bruxelles'},
-                {'time': '10:00', 'activity': 'Arrivée à Bruges'},
-                {'time': '10:30', 'activity': 'Visite guidée du centre historique'},
-                {'time': '12:30', 'activity': 'Déjeuner libre'},
-                {'time': '14:00', 'activity': 'Balade en bateau sur les canaux'},
-                {'time': '16:00', 'activity': 'Temps libre'},
-                {'time': '18:00', 'activity': 'Départ retour'},
-                {'time': '20:00', 'activity': 'Arrivée à Bruxelles'}
-            ]
-        },
-        'api_data': {},
-        'margin': 30,
-        'savings': 20
-    }
-    
-    print("\n📄 Génération d'une fiche Excursion...")
-    html_day = render_trip_template(
-        test_day_trip,
-        'day_trip',
-        'classic',
-        test_agency_config
-    )
-    
-    output_file_day = 'test_excursion_bruges.html'
-    with open(output_file_day, 'w', encoding='utf-8') as f:
-        f.write(html_day)
-    
-    print(f"✅ Fiche excursion générée ! Sauvegardée dans {output_file_day}")
-    
-    print("\n✅ Tests terminés ! Ouvrez les fichiers HTML dans votre navigateur pour voir le résultat.")
-
-if __name__ == "__main__":
-    _run_tests()

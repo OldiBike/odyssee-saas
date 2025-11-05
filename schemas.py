@@ -43,8 +43,9 @@ class AgencyCreateSchema(BaseModel):
     @validator('subdomain')
     def subdomain_alphanumeric(cls, v):
         """Vérifie que le subdomain ne contient que des caractères alphanumériques et tirets."""
-        if not v.replace('-', '').isalnum():
-            raise ValueError('Le sous-domaine ne peut contenir que des lettres, chiffres et tirets')
+        import re
+        if not re.match(r'^[a-z0-9\-]+$', v.lower()):
+            raise ValueError('Le sous-domaine ne peut contenir que des lettres minuscules, chiffres et tirets')
         if v.startswith('-') or v.endswith('-'):
             raise ValueError('Le sous-domaine ne peut pas commencer ou finir par un tiret')
         return v.lower()
@@ -117,8 +118,9 @@ class AgencyUpdateSchema(BaseModel):
     def subdomain_alphanumeric(cls, v):
         if v is None:
             return v
-        if not v.replace('-', '').isalnum():
-            raise ValueError('Le sous-domaine ne peut contenir que des lettres, chiffres et tirets')
+        import re
+        if not re.match(r'^[a-z0-9\-]+$', v.lower()):
+            raise ValueError('Le sous-domaine ne peut contenir que des lettres minuscules, chiffres et tirets')
         if v.startswith('-') or v.endswith('-'):
             raise ValueError('Le sous-domaine ne peut pas commencer ou finir par un tiret')
         return v.lower()

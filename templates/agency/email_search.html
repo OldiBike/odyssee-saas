@@ -1,0 +1,436 @@
+{% extends "base.html" %}
+
+{% block title %}Recherche d'Emails - Odyssée{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-result {
+        transition: all 0.2s ease;
+    }
+    .search-result:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .highlight {
+        background-color: #FEF3C7;
+        padding: 0 2px;
+        border-radius: 2px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">
+        <i class="fas fa-search text-blue-600 mr-3"></i>
+        Recherche d'Emails
+    </h1>
+    <p class="text-gray-600">Recherchez dans tous vos emails synchronisés</p>
+</div>
+
+<!-- Formulaire de recherche -->
+<div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <form id="searchForm" class="space-y-4">
+        <!-- Ligne 1 : Recherche texte -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                <i class="fas fa-keyboard text-gray-400 mr-2"></i>
+                Mots-clés
+            </label>
+            <input type="text" name="query" id="searchQuery" 
+                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                   placeholder="Rechercher dans le sujet, contenu, expéditeur..."
+                   value="{{ query or '' }}">
+        </div>
+
+        <!-- Ligne 2 : Filtres avancés -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Expéditeur</label>
+                <input type="text" name="sender" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       placeholder="email@example.com"
+                       value="{{ sender or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Destinataire</label>
+                <input type="text" name="recipient" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       placeholder="email@example.com"
+                       value="{{ recipient or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                <select name="direction" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">Tous</option>
+                    <option value="received" {% if direction == 'received' %}selected{% endif %}>Emails reçus</option>
+                    <option value="sent" {% if direction == 'sent' %}selected{% endif %}>Emails envoyés</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Ligne 3 : Dates et catégorie -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Date de début</label>
+                <input type="date" name="start_date" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       value="{{ start_date or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Date de fin</label>
+                <input type="date" name="end_date" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       value="{{ end_date or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Catégorie</label>
+                <select name="category" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">Toutes</option>
+                    <option value="demande" {% if category == 'demande' %}selected{% endif %}>Demande</option>
+                    <option value="reclamation" {% if category == 'reclamation' %}selected{% endif %}>Réclamation</option>
+                    <option value="suivi" {% if category == 'suivi' %}selected{% endif %}>Suivi</option>
+                    <option value="reservation" {% if category == 'reservation' %}selected{% endif %}>Réservation</option>
+                    <option value="autre" {% if category == 'autre' %}selected{% endif %}>Autre</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Sentiment</label>
+                <select name="sentiment" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">Tous</option>
+                    <option value="positive" {% if sentiment == 'positive' %}selected{% endif %}>Positif</option>
+                    <option value="neutral" {% if sentiment == 'neutral' %}selected{% endif %}>Neutre</option>
+                    <option value="negative" {% if sentiment == 'negative' %}selected{% endif %}>Négatif</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Boutons -->
+        <div class="flex items-center space-x-3">
+            <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition flex items-center">
+                <i class="fas fa-search mr-2"></i>
+                Rechercher
+            </button>
+            <button type="button" onclick="resetFilters()" class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition">
+                <i class="fas fa-redo mr-2"></i>
+                Réinitialiser
+            </button>
+            {% if results %}
+            <span class="text-sm text-gray-600 ml-auto">
+                <strong>{{ results|length }}</strong> résultat(s) trouvé(s)
+            </span>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Résultats de recherche -->
+{% if query or sender or recipient or start_date %}
+<div class="bg-white rounded-xl shadow-md p-6">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">
+        <i class="fas fa-list text-blue-600 mr-2"></i>
+        Résultats
+    </h2>
+
+    {% if results %}
+    <div class="space-y-4">
+        {% for email in results %}
+        <div class="search-result border border-gray-200 rounded-lg p-5 hover:border-blue-300">
+            <div class="flex justify-between items-start mb-3">
+                <div class="flex-1">
+                    <!-- Direction et badges -->
+                    <div class="flex items-center space-x-2 mb-2">
+                        {% if email.is_outbound %}
+                            <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                <i class="fas fa-arrow-up mr-1"></i>Envoyé
+                            </span>
+                        {% else %}
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                <i class="fas fa-arrow-down mr-1"></i>Reçu
+                            </span>
+                        {% endif %}
+                        
+                        {% if email.ai_category %}
+                            <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                                {{ email.ai_category }}
+                            </span>
+                        {% endif %}
+                        
+                        {% if email.ai_sentiment %}
+                            {% if email.ai_sentiment == 'positive' %}
+                                <span class="px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs">
+                                    <i class="fas fa-smile mr-1"></i>Positif
+                                </span>
+                            {% elif email.ai_sentiment == 'negative' %}
+                                <span class="px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs">
+                                    <i class="fas fa-frown mr-1"></i>Négatif
+                                </span>
+                            {% else %}
+                                <span class="px-3 py-1 bg-gray-50 text-gray-700 rounded-full text-xs">
+                                    <i class="fas fa-meh mr-1"></i>Neutre
+                                </span>
+                            {% endif %}
+                        {% endif %}
+
+                        {% if email.requires_action %}
+                            <span class="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                                <i class="fas fa-exclamation-circle mr-1"></i>Action requise
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Sujet -->
+                    <h3 class="text-lg font-bold text-gray-900 mb-2">
+                        {{ email.email_subject or 'Sans sujet' }}
+                    </h3>
+
+                    <!-- Expéditeur/Destinataire -->
+                    <div class="flex items-center space-x-4 text-sm text-gray-600 mb-2">
+                        <span>
+                            {% if email.is_outbound %}
+                                <i class="fas fa-paper-plane mr-1"></i>
+                                À: <strong>{{ email.email_to }}</strong>
+                            {% else %}
+                                <i class="fas fa-envelope mr-1"></i>
+                                De: <strong>{{ email.email_from }}</strong>
+                            {% endif %}
+                        </span>
+                        <span>
+                            <i class="fas fa-calendar mr-1"></i>
+                            {{ email.created_at.strftime('%d/%m/%Y à %H:%M') }}
+                        </span>
+                        {% if email.client %}
+                            <a href="{{ url_for('client_detail', client_id=email.client_id) }}" 
+                               class="text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-user mr-1"></i>
+                                {{ email.client.first_name }} {{ email.client.last_name }}
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- Résumé IA -->
+                    {% if email.ai_summary %}
+                    <div class="bg-purple-50 border-l-4 border-purple-500 rounded p-3 mb-3">
+                        <div class="flex items-start">
+                            <i class="fas fa-robot text-purple-600 mr-2 mt-1"></i>
+                            <p class="text-sm text-gray-700">{{ email.ai_summary }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Extrait du contenu -->
+                    {% if email.content %}
+                    <details class="text-sm text-gray-600">
+                        <summary class="cursor-pointer hover:text-gray-900 font-medium">
+                            Voir le contenu complet
+                        </summary>
+                        <div class="mt-2 p-3 bg-gray-50 rounded border border-gray-200 max-h-48 overflow-y-auto">
+                            {{ email.content[:500] }}{% if email.content|length > 500 %}...{% endif %}
+                        </div>
+                    </details>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center space-x-2 pt-3 border-t border-gray-200">
+                {% if not email.is_outbound %}
+                <button onclick="replyToEmail({{ email.id }})" 
+                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
+                    <i class="fas fa-reply mr-2"></i>Répondre
+                </button>
+                {% endif %}
+                
+                {% if email.client %}
+                <a href="{{ url_for('client_detail', client_id=email.client_id) }}" 
+                   class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm">
+                    <i class="fas fa-user mr-2"></i>Voir la fiche client
+                </a>
+                {% endif %}
+
+                <button onclick="viewThread('{{ email.email_thread_id }}')" 
+                        class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm">
+                    <i class="fas fa-comments mr-2"></i>Voir le fil
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="mt-6 flex justify-center">
+        <nav class="flex space-x-2">
+            {% if page > 1 %}
+            <a href="?{{ request.query_string.decode('utf-8') | replace('page=' ~ page, 'page=' ~ (page-1)) }}" 
+               class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+            {% endif %}
+            
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                    <span class="px-4 py-2 bg-blue-600 text-white rounded-lg">{{ p }}</span>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    <a href="?{{ request.query_string.decode('utf-8') | replace('page=' ~ page, 'page=' ~ p) }}" 
+                       class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        {{ p }}
+                    </a>
+                {% elif p == page - 3 or p == page + 3 %}
+                    <span class="px-4 py-2 text-gray-500">...</span>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <a href="?{{ request.query_string.decode('utf-8') | replace('page=' ~ page, 'page=' ~ (page+1)) }}" 
+               class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </nav>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-search text-gray-400 text-6xl mb-4"></i>
+        <p class="text-xl text-gray-600 mb-2">Aucun résultat trouvé</p>
+        <p class="text-gray-500">Essayez avec d'autres critères de recherche</p>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow-md p-12 text-center">
+    <i class="fas fa-search text-gray-400 text-6xl mb-4"></i>
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Commencez votre recherche</h2>
+    <p class="text-gray-600">Utilisez les filtres ci-dessus pour rechercher dans vos emails</p>
+</div>
+{% endif %}
+
+<!-- Modal de réponse -->
+<div id="replyModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fas fa-reply text-blue-600 mr-2"></i>
+                Répondre à l'email
+            </h3>
+            <button onclick="closeReplyModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <form id="replyForm">
+                <input type="hidden" id="replyInteractionId" name="interaction_id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <textarea id="replyBody" name="body" rows="10" required
+                              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                              placeholder="Écrivez votre réponse..."></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="replyIsHtml" name="is_html" class="mr-2">
+                        <span class="text-sm text-gray-700">Envoyer en format HTML</span>
+                    </label>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeReplyModal()" 
+                            class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        <i class="fas fa-paper-plane mr-2"></i>
+                        Envoyer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Soumission du formulaire de recherche
+    document.getElementById('searchForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const params = new URLSearchParams();
+        
+        for (const [key, value] of formData.entries()) {
+            if (value) params.append(key, value);
+        }
+        
+        window.location.href = `{{ url_for('email_search') }}?${params.toString()}`;
+    });
+
+    // Réinitialiser les filtres
+    function resetFilters() {
+        document.getElementById('searchForm').reset();
+        window.location.href = '{{ url_for('email_search') }}';
+    }
+
+    // Ouvrir le modal de réponse
+    function replyToEmail(interactionId) {
+        document.getElementById('replyInteractionId').value = interactionId;
+        document.getElementById('replyModal').classList.remove('hidden');
+        document.getElementById('replyBody').focus();
+    }
+
+    // Fermer le modal de réponse
+    function closeReplyModal() {
+        document.getElementById('replyModal').classList.add('hidden');
+        document.getElementById('replyForm').reset();
+    }
+
+    // Soumettre la réponse
+    document.getElementById('replyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const interactionId = document.getElementById('replyInteractionId').value;
+        const body = document.getElementById('replyBody').value;
+        const isHtml = document.getElementById('replyIsHtml').checked;
+
+        try {
+            const response = await fetchWithCSRF('/api/email/reply', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    interaction_id: parseInt(interactionId),
+                    body: body,
+                    is_html: isHtml
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast('Email envoyé avec succès', 'success');
+                closeReplyModal();
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || 'Erreur lors de l\'envoi', 'error');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showToast('Erreur réseau', 'error');
+        }
+    });
+
+    // Voir le fil de discussion
+    function viewThread(threadId) {
+        if (!threadId) {
+            showToast('Thread ID non disponible', 'error');
+            return;
+        }
+        // Rediriger vers la recherche avec le thread_id comme filtre
+        window.location.href = `{{ url_for('email_search') }}?thread_id=${encodeURIComponent(threadId)}`;
+    }
+</script>
+{% endblock %}

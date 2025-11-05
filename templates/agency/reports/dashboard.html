@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Rapports de Ventes - {{ g.agency.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-2">📈 Rapports de Ventes</h1>
+            <p class="text-muted mb-0">Générez et consultez vos rapports de ventes</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateReportModal">
+            <i class="bi bi-plus-circle"></i> Générer un Rapport
+        </button>
+    </div>
+
+    <!-- Statistiques rapides -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Rapports ce mois</p>
+                            <h4 class="mb-0">{{ stats.this_month }}</h4>
+                        </div>
+                        <div class="text-primary">
+                            <i class="bi bi-file-earmark-text" style="font-size: 2rem;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Rapports totaux</p>
+                            <h4 class="mb-0">{{ stats.total }}</h4>
+                        </div>
+                        <div class="text-success">
+                            <i class="bi bi-files" style="font-size: 2rem;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">CA du mois</p>
+                            <h4 class="mb-0">{{ stats.revenue_this_month }} €</h4>
+                        </div>
+                        <div class="text-warning">
+                            <i class="bi bi-currency-euro" style="font-size: 2rem;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Ventes du mois</p>
+                            <h4 class="mb-0">{{ stats.sales_this_month }}</h4>
+                        </div>
+                        <div class="text-info">
+                            <i class="bi bi-cart-check" style="font-size: 2rem;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rapports récents -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0">Rapports Récents</h5>
+        </div>
+        <div class="card-body">
+            {% if reports %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Période</th>
+                            <th>Vendeur</th>
+                            <th class="text-end">Ventes</th>
+                            <th class="text-end">CA</th>
+                            <th>Généré le</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in reports %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-primary">{{ report.report_type }}</span>
+                            </td>
+                            <td>
+                                {{ report.period_start|format_date('short') }} - {{ report.period_end|format_date('short') }}
+                            </td>
+                            <td>
+                                {% if report.user %}
+                                    {{ report.user.pseudo }}
+                                {% else %}
+                                    <span class="text-muted">Tous les vendeurs</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <strong>{{ report.total_sales }}</strong>
+                            </td>
+                            <td class="text-end">
+                                <strong>{{ report.total_revenue }} €</strong>
+                            </td>
+                            <td>
+                                {{ report.generated_at|format_date('full') }}
+                            </td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('view_report', report_id=report.id) }}" class="btn btn-outline-primary" title="Voir">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <button class="btn btn-outline-success" onclick="exportReport({{ report.id }}, 'excel')" title="Excel">
+                                        <i class="bi bi-file-earmark-excel"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="exportReport({{ report.id }}, 'pdf')" title="PDF">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-file-earmark-text text-muted" style="font-size: 4rem;"></i>
+                <p class="text-muted mt-3">Aucun rapport généré pour le moment</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateReportModal">
+                    Générer mon premier rapport
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Raccourcis rapides -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="mb-3">
+                        <i class="bi bi-lightning-charge text-warning"></i> Rapports Rapides
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" onclick="quickReport('daily')">
+                            Rapport du Jour
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickReport('weekly')">
+                            Rapport de la Semaine
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickReport('monthly')">
+                            Rapport du Mois
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="mb-3">
+                        <i class="bi bi-bar-chart text-info"></i> Comparaison
+                    </h6>
+                    <p class="text-muted small">Comparez deux périodes pour analyser l'évolution de vos ventes</p>
+                    <a href="{{ url_for('compare_reports') }}" class="btn btn-outline-info w-100">
+                        Comparer des Périodes
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de génération de rapport -->
+<div class="modal fade" id="generateReportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Générer un Rapport</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="generateReportForm">
+                    <div class="mb-3">
+                        <label class="form-label">Type de Période</label>
+                        <select class="form-select" id="periodType" required>
+                            <option value="daily">Quotidien</option>
+                            <option value="weekly">Hebdomadaire</option>
+                            <option value="monthly" selected>Mensuel</option>
+                            <option value="yearly">Annuel</option>
+                            <option value="custom">Personnalisé</option>
+                        </select>
+                    </div>
+
+                    <div id="customDatesDiv" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">Date de Début</label>
+                            <input type="date" class="form-control" id="customStart">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Date de Fin</label>
+                            <input type="date" class="form-control" id="customEnd">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Vendeur</label>
+                        <select class="form-select" id="sellerId">
+                            <option value="">Tous les vendeurs</option>
+                            {% for user in sellers %}
+                            <option value="{{ user.id }}">{{ user.pseudo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="generateReport()">
+                    <i class="bi bi-play-circle"></i> Générer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Afficher/masquer les dates personnalisées
+document.getElementById('periodType').addEventListener('change', function() {
+    const customDiv = document.getElementById('customDatesDiv');
+    if (this.value === 'custom') {
+        customDiv.style.display = 'block';
+        document.getElementById('customStart').required = true;
+        document.getElementById('customEnd').required = true;
+    } else {
+        customDiv.style.display = 'none';
+        document.getElementById('customStart').required = false;
+        document.getElementById('customEnd').required = false;
+    }
+});
+
+// Générer un rapport
+async function generateReport() {
+    const periodType = document.getElementById('periodType').value;
+    const sellerId = document.getElementById('sellerId').value;
+    
+    const data = {
+        period_type: periodType,
+        user_id: sellerId || null
+    };
+    
+    if (periodType === 'custom') {
+        data.custom_start = document.getElementById('customStart').value;
+        data.custom_end = document.getElementById('customEnd').value;
+        
+        if (!data.custom_start || !data.custom_end) {
+            alert('Veuillez sélectionner les dates de début et de fin');
+            return;
+        }
+    }
+    
+    try {
+        const response = await fetch('/api/reports/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Fermer le modal
+            bootstrap.Modal.getInstance(document.getElementById('generateReportModal')).hide();
+            
+            // Rediriger vers le rapport
+            window.location.href = `/agency/reports/${result.report_id}`;
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la génération du rapport');
+    }
+}
+
+// Rapport rapide
+async function quickReport(type) {
+    const data = {
+        period_type: type,
+        user_id: null
+    };
+    
+    try {
+        const response = await fetch('/api/reports/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            window.location.href = `/agency/reports/${result.report_id}`;
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la génération du rapport');
+    }
+}
+
+// Exporter un rapport
+function exportReport(reportId, format) {
+    window.location.href = `/api/reports/${reportId}/export?format=${format}`;
+}
+</script>
+{% endblock %}

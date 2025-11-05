@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}{{ seller.pseudo }} - Performance - {{ g.agency.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- En-tête avec bouton retour -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center">
+            <a href="{{ url_for('sellers_dashboard') }}" class="btn btn-outline-secondary me-3">
+                <i class="fas fa-arrow-left"></i> Retour
+            </a>
+            <div class="avatar-lg bg-primary rounded-circle text-white d-flex align-items-center justify-content-center me-3" style="width: 60px; height: 60px; font-size: 1.5rem;">
+                {{ seller.pseudo[0]|upper }}
+            </div>
+            <div>
+                <h1 class="h3 mb-0">{{ seller.pseudo }}</h1>
+                <p class="text-muted mb-0">{{ seller.email }}</p>
+            </div>
+        </div>
+        
+        <div class="text-end">
+            <div class="badge {% if performance.objective_completion >= 100 %}bg-success{% elif performance.objective_completion >= 70 %}bg-info{% elif performance.objective_completion >= 50 %}bg-warning{% else %}bg-danger{% endif %} fs-5 px-3 py-2">
+                {{ performance.objective_completion }}% de l'objectif
+            </div>
+        </div>
+    </div>
+
+    <!-- KPIs du vendeur -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">CA Généré (Mois)</h6>
+                    <h2 class="mb-1">{{ performance.monthly_revenue }}€</h2>
+                    <small class="text-muted">Objectif: {{ seller.sales_target|default(0) }}€</small>
+                    <div class="progress mt-2" style="height: 5px;">
+                        <div class="progress-bar bg-success" style="width: {{ performance.objective_completion }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Ventes (Mois)</h6>
+                    <h2 class="mb-1">{{ performance.monthly_sales }}</h2>
+                    <small class="text-success">
+                        <i class="fas fa-arrow-up"></i> {{ performance.sales_growth }}% vs mois dernier
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Taux de Conversion</h6>
+                    <h2 class="mb-1">{{ performance.conversion_rate }}%</h2>
+                    <small class="text-muted">{{ performance.proposed_trips }} voyages proposés</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Commissions</h6>
+                    <h2 class="mb-1">{{ performance.total_commissions }}€</h2>
+                    <small class="text-info">Taux: {{ seller.commission_rate|default(10) }}%</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Graphiques et statistiques -->
+    <div class="row mb-4">
+        <!-- Évolution des ventes -->
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">📊 Évolution des Ventes (6 derniers mois)</h5>
+                    <canvas id="salesChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Répartition par type -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">🎯 Répartition des Ventes</h5>
+                    <canvas id="typeChart"></canvas>
+                    
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Séjours</span>
+                            <strong>{{ performance.sejours_count }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Excursions</span>
+                            <strong>{{ performance.day_trips_count }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top destinations et dernières ventes -->
+    <div class="row">
+        <!-- Top destinations -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">🌍 Top Destinations</h5>
+                    
+                    {% for dest in performance.top_destinations %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>{{ dest.destination }}</span>
+                            <strong>{{ dest.count }} ventes</strong>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-primary" style="width: {{ (dest.count / performance.top_destinations[0].count * 100)|int }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ dest.revenue }}€ de CA</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dernières ventes -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">🎫 Dernières Ventes</h5>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Destination</th>
+                                    <th>Client</th>
+                                    <th>Prix</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for trip in recent_sales %}
+                                <tr>
+                                    <td>{{ trip.sold_at|format_date('short') }}</td>
+                                    <td>{{ trip.destination }}</td>
+                                    <td>
+                                        {% if trip.client %}
+                                            {{ trip.client.first_name }} {{ trip.client.last_name[0] }}.
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td><strong>{{ trip.price }}€</strong></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques détaillées -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">📈 Statistiques Détaillées</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="border-start border-primary border-3 ps-3">
+                                <h6 class="text-muted mb-1">Panier Moyen</h6>
+                                <h4 class="mb-0">{{ performance.average_sale }}€</h4>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <div class="border-start border-success border-3 ps-3">
+                                <h6 class="text-muted mb-1">Taux de Closing</h6>
+                                <h4 class="mb-0">{{ performance.closing_rate }}%</h4>
+                                <small class="text-muted">{{ performance.assigned_trips }} voyages assignés</small>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <div class="border-start border-info border-3 ps-3">
+                                <h6 class="text-muted mb-1">Total All-Time</h6>
+                                <h4 class="mb-0">{{ performance.total_revenue }}€</h4>
+                                <small class="text-muted">{{ performance.total_sales }} ventes</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Graphique d'évolution des ventes
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    new Chart(salesCtx, {
+        type: 'line',
+        data: {
+            labels: {{ performance.monthly_trend.months|tojson }},
+            datasets: [{
+                label: 'Chiffre d\'affaires (€)',
+                data: {{ performance.monthly_trend.revenue|tojson }},
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                tension: 0.4,
+                fill: true
+            }, {
+                label: 'Nombre de ventes',
+                data: {{ performance.monthly_trend.sales|tojson }},
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                tension: 0.4,
+                fill: true,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'CA (€)'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Ventes'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Graphique de répartition par type
+    const typeCtx = document.getElementById('typeChart').getContext('2d');
+    new Chart(typeCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Séjours', 'Excursions'],
+            datasets: [{
+                data: [{{ performance.sejours_count }}, {{ performance.day_trips_count }}],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 159, 64, 0.8)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

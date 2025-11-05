@@ -5,41 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Odyssée SaaS{% endblock %}</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- NOUVEAU : CSS pour Toastify -->
+    
+    <!-- Toastify -->
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-    <style>
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-        .nav-link {
-            transition: all 0.2s ease;
-        }
-        .nav-link:hover {
-            background-color: rgba(59, 130, 246, 0.1);
-            color: #3B82F6;
-        }
-        .nav-link.active {
-            background-color: #3B82F6;
-            color: white;
-        }
-    </style>
+    
+    <!-- Odyssée Design System -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/odyssee-design-system.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="bg-gray-50">
     
     <!-- Navigation Top Bar -->
-    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+    <nav class="odyssee-nav sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <!-- Logo -->
                 <div class="flex items-center">
-                    <a href="{{ url_for('home') }}" class="flex items-center">
-                        <span class="text-2xl">🚀</span>
-                        <span class="ml-2 text-xl font-bold text-gray-800">Odyssée</span>
+                    <a href="{{ url_for('home') }}" class="odyssee-logo">
+                        <span class="odyssee-logo-icon">🚀</span>
+                        <span>Odyssée</span>
                         {% if g.agency %}
-                        <span class="ml-3 text-sm text-gray-500">→ {{ g.agency.name }}</span>
+                        <span class="ml-3 text-sm text-gray-500 font-normal">→ {{ g.agency.name }}</span>
                         {% endif %}
                     </a>
                 </div>
@@ -55,9 +52,30 @@
                                 <i class="fas fa-building mr-2"></i>Agences
                             </a>
                         {% else %}
+                            <!-- Navigation pour agences -->
                             <a href="{{ url_for('home') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
-                                <i class="fas fa-home mr-2"></i>Accueil
+                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
                             </a>
+                            <a href="{{ url_for('trips_list') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-plane mr-2"></i>Voyages
+                            </a>
+                            <a href="{{ url_for('inspiration') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-lightbulb mr-2"></i>Inspiration
+                            </a>
+                            <a href="{{ url_for('crm_dashboard') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-users mr-2"></i>CRM
+                            </a>
+                            <a href="{{ url_for('reports_dashboard') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-chart-line mr-2"></i>Rapports
+                            </a>
+                            {% if g.user.role == 'agency_admin' %}
+                            <a href="{{ url_for('sellers_dashboard') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-user-tie mr-2"></i>Équipe
+                            </a>
+                            <a href="{{ url_for('email_sync_settings') }}" class="nav-link px-4 py-2 rounded-lg text-sm font-medium">
+                                <i class="fas fa-cog mr-2"></i>Paramètres
+                            </a>
+                            {% endif %}
                         {% endif %}
                     {% endif %}
                 </div>
@@ -65,15 +83,56 @@
                 <!-- User Menu -->
                 <div class="flex items-center space-x-4">
                     {% if g.user %}
+                        <!-- Notifications (uniquement pour les agences) -->
+                        {% if g.user.role in ['agency_admin', 'seller'] %}
+                        <div class="relative">
+                            <!-- Bouton notifications -->
+                            <button id="notifications-btn" 
+                                    onclick="toggleNotifications()"
+                                    class="btn-icon relative">
+                                <i class="fas fa-bell text-lg"></i>
+                                <!-- Badge de compteur -->
+                                <span id="notification-badge" 
+                                      class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold animate-pulse-glow">
+                                    0
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown de notifications -->
+                            <div id="notifications-dropdown" 
+                                 class="notification-dropdown hidden">
+                                <!-- En-tête -->
+                                <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                                    <h3 class="text-sm font-semibold text-gray-900">
+                                        <i class="fas fa-bell mr-2 text-blue-500"></i>Notifications
+                                    </h3>
+                                    <button onclick="markAllAsRead()" 
+                                            class="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                                        <i class="fas fa-check-double mr-1"></i>Tout marquer comme lu
+                                    </button>
+                                </div>
+                                
+                                <!-- Liste des notifications -->
+                                <div id="notifications-list" class="max-h-96 overflow-y-auto">
+                                    <!-- Les notifications apparaissent ici dynamiquement -->
+                                    <div class="px-4 py-8 text-center text-gray-500 text-sm">
+                                        <i class="fas fa-inbox text-3xl mb-2 text-gray-400"></i>
+                                        <p>Aucune nouvelle notification</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
                         <div class="flex items-center space-x-3">
                             <div class="text-right hidden sm:block">
                                 <p class="text-sm font-medium text-gray-700">{{ g.user.pseudo }}</p>
                                 <p class="text-xs text-gray-500">{{ g.user.role }}</p>
                             </div>
-                            <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                                {{ g.user.pseudo[0] }}
+                            <div class="user-avatar">
+                                {{ g.user.pseudo[0].upper() }}
                             </div>
-                            <a href="{{ url_for('logout') }}" class="text-sm text-red-600 hover:text-red-700 font-medium">
+                            <a href="{{ url_for('logout') }}" class="text-sm text-red-600 hover:text-red-700 font-medium transition-colors">
                                 <i class="fas fa-sign-out-alt mr-1"></i>Déconnexion
                             </a>
                         </div>
@@ -84,15 +143,57 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                <div class="mb-6">
+                <div class="mb-6 space-y-3">
                     {% for category, message in messages %}
-                        <div class="bg-{{ category }}-100 border border-{{ category }}-400 text-{{ category }}-700 px-4 py-3 rounded-lg mb-2" role="alert">
-                            <span class="block sm:inline">{{ message }}</span>
-                        </div>
+                        {% if category == 'success' %}
+                            <div class="odyssee-card bg-green-50 border-green-200 animate-slide-down" role="alert">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                                        <i class="fas fa-check text-green-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-green-900">{{ message }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif category == 'error' or category == 'danger' %}
+                            <div class="odyssee-card bg-red-50 border-red-200 animate-slide-down" role="alert">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                                        <i class="fas fa-exclamation-circle text-red-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-red-900">{{ message }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif category == 'warning' %}
+                            <div class="odyssee-card bg-yellow-50 border-yellow-200 animate-slide-down" role="alert">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                                        <i class="fas fa-exclamation-triangle text-yellow-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-yellow-900">{{ message }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="odyssee-card bg-blue-50 border-blue-200 animate-slide-down" role="alert">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                        <i class="fas fa-info-circle text-blue-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-blue-900">{{ message }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
                     {% endfor %}
                 </div>
             {% endif %}
@@ -104,18 +205,38 @@
 
     <!-- Footer -->
     <footer class="bg-white border-t border-gray-200 mt-12">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div class="text-center text-sm text-gray-500">
-                <p>© 2025 Odyssée SaaS - Plateforme Multi-Agences</p>
-                <p class="mt-1">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="text-center md:text-left">
+                    <p class="text-sm text-gray-600">
+                        <span class="font-semibold gradient-text">© 2025 Odyssée SaaS</span>
+                        <span class="mx-2">·</span>
+                        <span>Plateforme Multi-Agences</span>
+                    </p>
                     {% if g.agency %}
-                    Agence active : <strong>{{ g.agency.name }}</strong> ({{ g.agency.subdomain }})
+                    <p class="text-xs text-gray-500 mt-1">
+                        Agence active : <strong class="text-blue-600">{{ g.agency.name }}</strong> <span class="text-gray-400">({{ g.agency.subdomain }})</span>
+                    </p>
                     {% endif %}
-                </p>
+                </div>
+                <div class="flex items-center gap-6">
+                    <a href="#" class="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                        <i class="fas fa-question-circle mr-1"></i>Support
+                    </a>
+                    <a href="#" class="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                        <i class="fas fa-file-alt mr-1"></i>Documentation
+                    </a>
+                </div>
             </div>
         </div>
     </footer>
 
+    <!-- Socket.IO pour les notifications temps réel -->
+    {% if g.user and g.user.role in ['agency_admin', 'seller'] %}
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    {% endif %}
+    
     <!-- NOUVEAU : JS pour Toastify -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script>
